@@ -2,9 +2,35 @@
 #include <string.h>
 #include "znbasic.h"
 #include "zneratosthenes_sieve.h"
+#include <sstream>
 
 namespace zn
 {
+    class exception
+    {
+    public:
+        
+    } ;
+    
+    template <class T>
+    class missing_inverse_t : public std::exception
+    {
+    public:
+        missing_inverse_t(const T &lhs, const T &rhs) : lhs_(lhs), rhs_(rhs) {}
+        virtual const char *what() const noexcept override
+        {
+            std::ostringstream ost ;
+            ost << lhs_ << " - " << rhs_ ;
+            temp_ = ost.str() ;
+            return temp_.c_str() ;
+        }
+    private:
+        T lhs_ ;
+        T rhs_ ;
+        mutable std::string temp_ ;
+    } ;
+    
+    
     template <class T, int N>
     struct module_t
     {
@@ -15,10 +41,10 @@ namespace zn
     struct module_var_t
     {
     public:
-        const T &module(void) { return value_ ;}
-        void set(T t) { value_ = t ;}
+        static const T &module(void) { return value_ ;}
+        static void set(T t) { value_ = t ;}
     private:
-        T value_ ;
+        static T value_ ;
     } ;
     //
     // class for modular arithmetic
@@ -32,13 +58,7 @@ namespace zn
         T value(void) const { return value_ ;}
         zn_t<T, M> inverse(void) const
         {
-            auto ext = extended_euclidean_algorithm(this->module(), value_) ;
-            if (std::get<0>(ext) != 1)
-                throw std::runtime_error("") ;
-            T result = std::get<2>(ext) ;
-            if (result < 0)
-                result += this->module() ;
-            return zn_t<T, M>(result) ;
+            return zn_t<T, M>(inverse_value()) ;
         }
         zn_t &operator+=(const zn_t<T, M> &rhs)
         {
@@ -57,7 +77,23 @@ namespace zn
             value_ = (value * rhs.value_) % this->module() ;
             return *this ;
         }
+        zn_t &operator/=(const zn_t<T, M> &rhs)
+        {
+            value_ = (value * rhs.inverse_value()) % this->module() ;
+            return *this ;
+        }
     private:
+        T inverse_value(void) const
+        {
+            auto ext = extended_euclidean_algorithm(this->module(), value_) ;
+            if (std::get<0>(ext) != 1)
+                throw missing_inverse_t<T>(this->module(), value_) ;
+            T result = std::get<2>(ext) ;
+            if (result < 0)
+                result += this->module() ;
+            return result ;
+        }
+        
         T  value_ ; 
      } ;
      
@@ -113,6 +149,20 @@ void test_zn(void)
     std::cout << gcd(27, 84) << std::endl ;
 }
 
+
+template<>
+int module_var_t<int, 0>::value_ = 0 ;
+
+typedef zn_t<int, module_var_t<int, 0> > mod_var_t ;
+
+void test_zn_var(int m)
+{
+    module_var_t<int, 0>::set(m) ;
+    std::cout << "Testing for m = " << m << std::endl ;
+    mod_var_t a(3), b(5) ;
+    std::cout << "a / b = " << (a / b).value() << "(mod " << m << ")" << std::endl ;
+}
+
 int main(int argc, char *argv[])
 {
 
@@ -121,8 +171,10 @@ int main(int argc, char *argv[])
     for (int i = 0 ; i < argc ; i++)
         if (strncmp(argv[i], "--eratosthenes=", 15) == 0)
             test_eratosthenes(atoi(argv[i] + 15)) ;
-        else if (strncmp(argv[i], "--zn=", 5) == 0)
+        else if (strcmp(argv[i], "--zn") == 0)
             test_zn() ;
+        else if (strncmp(argv[i], "--zv=", 5) == 0)
+            test_zn_var(atoi(argv[i] + 5)) ;
     }
     catch (std::exception &exc)
     {
