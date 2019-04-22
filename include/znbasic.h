@@ -2,10 +2,29 @@
 #define znbasic_H
 
 #include <tuple>
+#include <sstream>
 
 
 namespace zn
 {
+    template <class T>
+    class not_relatively_prime_t : public std::exception
+    {
+    public:
+        not_relatively_prime_t(const T &lhs, const T &rhs) : lhs_(lhs), rhs_(rhs) {}
+        virtual const char *what() const noexcept override
+        {
+            std::ostringstream ost ;
+            ost << lhs_ << " - " << rhs_ ;
+            temp_ = ost.str() ;
+            return temp_.c_str() ;
+        }
+    private:
+        T lhs_ ;
+        T rhs_ ;
+        mutable std::string temp_ ;
+    } ;
+    
     template <class T>
     T gcd(T a, T b)
     {

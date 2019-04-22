@@ -3,10 +3,8 @@
 #ifdef HAVE_BOOST
 #include <boost/multiprecision/cpp_int.hpp>
 #endif
-#include "znbasic.h"
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
-#include <sstream>
 
 namespace zn
 {
