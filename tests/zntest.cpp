@@ -1,6 +1,7 @@
 //#define BOOST_TEST_MODULE zntest
 #include <boost/test/included/unit_test.hpp>
 #include "zngroup.h"
+#include "zneratosthenes_sieve.h"
 #include <boost/multiprecision/cpp_int.hpp>
 
 
@@ -13,28 +14,20 @@ using namespace boost::multiprecision ;
 template <> cpp_int module_var_t<cpp_int, 0>::value_ = cpp_int(0) ;
 
 template <class T>
-int test_zn(T a, T b, T m)
+int test_zngroup_1(T a, T b, T m)
 {
-    typedef zn_t<T, module_var_t<T, 0>> zn ;
     module_var_t<T, 0>::set(m) ;
-    zn za(a), zb(b), zc ;
+    zn_t<T, module_var_t<T, 0>> za(a), zb(b) ;
 
-    
-    zn s = za + zb ;
-    zn d = za - zb ;
-    bool equal = s + d == 2 * za ;
+    bool equal = za + zb == a + b ;
     BOOST_TEST(equal) ;
-    equal = (s - d == 2 * zb) ;
+    equal = ((za + b) == (a + b)) ;
     BOOST_TEST(equal) ;
-    equal = (s + d == 2 * a) ;
+    equal = ((b + za) == (a + b)) ;
     BOOST_TEST(equal) ;
-    equal = ((za + 2) == (a + 2)) ;
+    equal = ((b - za) == (b - a)) ;
     BOOST_TEST(equal) ;
-    equal = ((2 + za) == (a + 2)) ;
-    BOOST_TEST(equal) ;
-    equal = ((2 - za) == (2 - a)) ;
-    BOOST_TEST(equal) ;
-    equal = ((za - 2) == (a - 2)) ;
+    equal = ((za - b) == (a - b)) ;
     BOOST_TEST(equal) ;
     equal = (za * zb == a * b) ;
     BOOST_TEST(equal) ;
@@ -44,20 +37,35 @@ int test_zn(T a, T b, T m)
     BOOST_TEST(equal) ;
     equal = b * (za / zb) == a  ;
     BOOST_TEST(equal) ;
+    equal = b * (za / b) == a  ;
+    BOOST_TEST(equal) ;
+    equal = b * (a / zb) == a  ;
+    BOOST_TEST(equal) ;
     
     
     return 0 ;
 }
 
-void free_test_function()
+template<class T>
+void test_zngroup()
 {
-    test_zn<int>(10, 15, 31) ;
-    test_zn<cpp_int>(10, 15, 31) ;
+    test_zngroup_1<T>(10, 15, 31) ;
+}
+
+template <class T>
+void test_eratosthenes(void)
+{
+    auto primes = eratosthenes_sieve<T>(100) ;
+    BOOST_TEST(primes.size() == 25) ;
+    BOOST_TEST(*primes.rbegin() == 97) ;
 }
 
 test_suite* init_unit_test_suite( int /*argc*/, char* /*argv*/[] )
 {
-    framework::master_test_suite().add( BOOST_TEST_CASE( &free_test_function ) );
+    framework::master_test_suite().add( BOOST_TEST_CASE( &test_zngroup<int> ) );
+    framework::master_test_suite().add( BOOST_TEST_CASE( &test_zngroup<cpp_int> ) );
+    framework::master_test_suite().add( BOOST_TEST_CASE( &test_eratosthenes<int> ) );
+    framework::master_test_suite().add( BOOST_TEST_CASE( &test_eratosthenes<cpp_int> ) );
     return 0;
 }
 

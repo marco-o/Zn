@@ -9,30 +9,36 @@
 namespace zn
 {
     
+
     
-    template <class T>
-    struct bit_handling_t
+    inline bool bit_test(int n, int bit)
     {
-        static int highest(const T &t)
-        {
-            return sizeof(T) * 8 - 1;
-        }
-        static bool isset(const T &t, int i)
-        {
-            return t & (1 << i) ;
-        }
-    } ;
+        return (n >> bit) & 1;
+    }
     
+    inline int msb(unsigned int n)
+    {
+        int i = 0 ;
+        for ( ; n ; i++)
+            n >= 1 ;
+        return i ;
+    }
+    
+    int signbit(int n)
+    {
+        return n ;
+    }
+   
     template <class N, class E>
     N power(N base, const E &exp)
     {
-     /*   if (exp < 0)
-            return power(base, -exp) ;*/
-        N result = 1 ;
-        size_t b = bit_handling_t<E>::highest(exp) ;
+     //   if (signbit(exp) < 0)
+      //      return power(base, -exp) ;
+        N result(1) ;
+        size_t b = msb(exp) ;
         for (size_t i = 0 ; i < b ; i++)
         {
-            if (bit_handling_t<E>::isset(exp, i))
+            if (bit_test(exp, i))
                 result *= base ;
             base *= base ;
         }
@@ -67,14 +73,6 @@ void test_zn1(void)
 template<> int module_var_t<int, 0>::value_ = 0 ;
 typedef zn_t<int, module_var_t<int, 0> > zn_var_t ;
 
-void test_power(int a, int b, int m)
-{
-    module_var_t<int, 0>::set(m) ;
-    zn_var_t a1(a) ;
-    auto pwr = power(a1, b) ;
-    std::cout << a1.value() << "^" << b << " = " << pwr.value() 
-              << "(mod " << m << ")" << std::endl ;    
-}
 
 #define BOOST_TEST(x)  x
 
@@ -114,6 +112,24 @@ void test_boost(void)
     std::cout << a * b << std::endl ;
 }
 #endif
+
+template <class T>
+void test_power1(T a, T b, T m)
+{
+    module_var_t<T, 0>::set(m) ;
+    zn_t<T, module_var_t<T, 0> > a1(a) ;
+    auto pwr = power(a1, b) ;
+    std::cout << a1.value() << "^" << b << " = " << pwr.value() 
+              << "(mod " << m << ")" << std::endl ;    
+}
+
+void test_power(int a, int b, int m)
+{
+    test_power1<int>(a, b, m) ;
+#ifdef HAVE_BOOST
+    test_power1<cpp_int>(a, b, m) ;
+#endif
+}
 
 void test_zn_var(int m)
 {

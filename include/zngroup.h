@@ -152,6 +152,18 @@ namespace zn
         return lhs * rhs.inverse() ;
     }
     
+    template <class T, class M, class U>
+    zn_t<T, M> operator/(const U &lhs, const zn_t<T, M> &rhs)
+    {
+        return lhs * rhs.inverse() ;
+    }
+
+    template <class T, class M, class U>
+    zn_t<T, M> operator/(const zn_t<T, M> &lhs, const U &rhs)
+    {
+        return lhs * zn_t<T, M>(rhs).inverse() ;
+    }
+
     template <class T, class M>
     bool operator==(const zn_t<T, M> &lhs, const zn_t<T, M> &rhs)
     {
