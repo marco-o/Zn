@@ -76,6 +76,8 @@ void test_power(int a, int b, int m)
               << "(mod " << m << ")" << std::endl ;    
 }
 
+#define BOOST_TEST(x)  x
+
 template <class T>
 int test_zn(T a, T b, T m)
 {
@@ -86,11 +88,18 @@ int test_zn(T a, T b, T m)
     
     zn s = za + zb ;
     zn d = za - zb ;
-    if (s + d != za + za)
-        return -1 ;
-    std::cout << "za = " << za.value() 
-              << ", zb = " << zb.value() 
-              << ", s = " << s.value() << std::endl ;
+    bool equal = s + d == 2 * za ;
+    BOOST_TEST(equal) ;
+    equal = (s - d == 2 * zb) ;
+    BOOST_TEST(equal) ;
+    equal = (s + d == 2 * a) ;
+    BOOST_TEST((za * zb == a * b)) ;
+    BOOST_TEST((za + 2) == (a + 2)) ;
+    BOOST_TEST((2 + za) == (a + 2)) ;
+    BOOST_TEST((2 - za) == (2 - a)) ;
+    BOOST_TEST((2 - za) == (2 - a)) ;
+    
+    
     return 0 ;
 }
 

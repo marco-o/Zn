@@ -18,7 +18,7 @@ namespace zn
     public:
         static const T &module(void) { return value_ ;}
         static void set(T t) { value_ = t ;}
-    //private:
+    private:
         static T value_ ;
     } ;
     //
@@ -29,9 +29,14 @@ namespace zn
     {
     public:
         typedef M module_type ;
-        zn_t(const T &value = T()) : value_(value) {}
+        zn_t(const T &value = T())
+        {
+            value_ = value % this->module() ;
+            if (value_ < 0)
+                value_ += this->module() ;
+        }
         T value(void) const { return value_ ;}
-        operator T (void) const { return value_ ;}
+        explicit operator T (void) const { return value_ ;}
         zn_t<T, M> inverse(void) const
         {
             return zn_t<T, M>(inverse_value()) ;
@@ -74,7 +79,7 @@ namespace zn
             return result ;
         }
         
-        T  value_ ; 
+        T  value_ ; // assumed in the range [0; module()[
      } ;
      
     template <class T, class M>
@@ -83,14 +88,14 @@ namespace zn
         return zn_t<T, M>((lhs.value() + rhs.value()) % rhs.module()) ;
     }
 
-    template <class T, class M>
-    zn_t<T, M> operator+(const zn_t<T, M> &lhs, const T &rhs)
+    template <class T, class M, class U>
+    zn_t<T, M> operator+(const zn_t<T, M> &lhs, const U &rhs)
     {
-        return zn_t<T, M>((lhs.value() + rhs) % rhs.module()) ;
+        return zn_t<T, M>((lhs.value() + rhs) % lhs.module()) ;
     }
     
-    template <class T, class M>
-    zn_t<T, M> operator+(const T &lhs, const zn_t<T, M> &rhs)
+    template <class T, class M, class U>
+    zn_t<T, M> operator+(const U &lhs, const zn_t<T, M> &rhs)
     {
         return zn_t<T, M>((lhs + rhs.value()) % rhs.module()) ;
     }
@@ -105,8 +110,8 @@ namespace zn
         return zn_t<T, M>(result) ;
     }
     
-    template <class T, class M>
-    zn_t<T, M> operator-(const zn_t<T, M> &lhs, const T &rhs)
+    template <class T, class M, class U>
+    zn_t<T, M> operator-(const zn_t<T, M> &lhs, const U &rhs)
     {
         T result = (lhs.value() - rhs) % lhs.module() ;
         if (result < 0)
@@ -114,12 +119,12 @@ namespace zn
         return zn_t<T, M>(result) ;
     }
     
-    template <class T, class M>
-    zn_t<T, M> operator-(const T &lhs, const zn_t<T, M> &rhs)
+    template <class T, class M, class U>
+    zn_t<T, M> operator-(const U &lhs, const zn_t<T, M> &rhs)
     {
-        T result = (lhs.value() - rhs.value()) % lhs.module() ;
+        T result = (lhs - rhs.value()) % rhs.module() ;
         if (result < 0)
-            result += lhs.module() ;
+            result += rhs.module() ;
         return zn_t<T, M>(result) ;
     }
     
@@ -129,16 +134,16 @@ namespace zn
         return zn_t<T, M>((lhs.value() * rhs.value()) % lhs.module()) ;
     }
 
-    template <class T, class M>
-    zn_t<T, M> operator*(const zn_t<T, M> &lhs, const T &rhs)
+    template <class T, class M, class U>
+    zn_t<T, M> operator*(const zn_t<T, M> &lhs, const U &rhs)
     {
         return zn_t<T, M>((lhs.value() * rhs) % lhs.module()) ;
     }
     
-    template <class T, class M>
-    zn_t<T, M> operator*(const T &lhs, const zn_t<T, M> &rhs)
+    template <class T, class M, class U>
+    zn_t<T, M> operator*(const U &lhs, const zn_t<T, M> &rhs)
     {
-        return zn_t<T, M>((lhs * rhs.value()) % lhs.module()) ;
+        return zn_t<T, M>((lhs * rhs.value()) % rhs.module()) ;
     }
 
     template <class T, class M>
@@ -153,16 +158,16 @@ namespace zn
         return lhs.value() == rhs.value();
     }
 
-    template <class T, class M>
-    bool operator==(const zn_t<T, M> &lhs, const T &rhs)
+    template <class T, class M, class U>
+    bool operator==(const zn_t<T, M> &lhs, const U &rhs)
     {
-        return lhs.value() == rhs;
+        return (lhs.value() - rhs) % lhs.module() == 0 ;
     }
 
-    template <class T, class M>
-    bool operator==(const T &lhs, const zn_t<T, M> &rhs)
+    template <class T, class M, class U>
+    bool operator==(const U &lhs, const zn_t<T, M> &rhs)
     {
-        return lhs == rhs.value();
+        return (lhs - rhs.value()) % rhs.module() == 0 ;
     }
 
     template <class T, class M>

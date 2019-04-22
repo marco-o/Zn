@@ -13,17 +13,40 @@ using namespace boost::multiprecision ;
 template <> cpp_int module_var_t<cpp_int, 0>::value_ = cpp_int(0) ;
 
 template <class T>
-void test_zn(T a, T b, T m)
+int test_zn(T a, T b, T m)
 {
     typedef zn_t<T, module_var_t<T, 0>> zn ;
-    zn za(a), zb(b), zc ;
     module_var_t<T, 0>::set(m) ;
+    zn za(a), zb(b), zc ;
 
     
     zn s = za + zb ;
     zn d = za - zb ;
-    bool equal = (s + d == za + za) ; 
+    bool equal = s + d == 2 * za ;
     BOOST_TEST(equal) ;
+    equal = (s - d == 2 * zb) ;
+    BOOST_TEST(equal) ;
+    equal = (s + d == 2 * a) ;
+    BOOST_TEST(equal) ;
+    equal = ((za + 2) == (a + 2)) ;
+    BOOST_TEST(equal) ;
+    equal = ((2 + za) == (a + 2)) ;
+    BOOST_TEST(equal) ;
+    equal = ((2 - za) == (2 - a)) ;
+    BOOST_TEST(equal) ;
+    equal = ((za - 2) == (a - 2)) ;
+    BOOST_TEST(equal) ;
+    equal = (za * zb == a * b) ;
+    BOOST_TEST(equal) ;
+    equal = (za * b == a * b) ;
+    BOOST_TEST(equal) ;
+    equal = (a * zb == a * b) ;
+    BOOST_TEST(equal) ;
+    equal = b * (za / zb) == a  ;
+    BOOST_TEST(equal) ;
+    
+    
+    return 0 ;
 }
 
 void free_test_function()
