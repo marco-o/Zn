@@ -1,7 +1,6 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.1)
 
 set (CMAKE_CXX_STANDARD 11)
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11")
 
 if (BOOST_PATH)
     include_directories(${BOOST_PATH})
@@ -10,8 +9,9 @@ else (BOOST_PATH)
     message("Define BOOST_PATH") 
 endif (BOOST_PATH)
 
-project(app_project)
+project(zn)
 
-add_executable(myapp main.cpp)
+
+add_subdirectory(tests)
 
 #install(TARGETS myapp DESTINATION bin)
