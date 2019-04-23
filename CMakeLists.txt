@@ -5,4 +5,3 @@ set (CMAKE_CXX_STANDARD 11)
 
 add_subdirectory(tests)
 
-#install(TARGETS myapp DESTINATION bin)

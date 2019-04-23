@@ -3,6 +3,7 @@
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
 #include <boost/multiprecision/cpp_int.hpp>
+#include "znquadratic_residue.h"
 
 
 
@@ -60,12 +61,34 @@ void test_eratosthenes(void)
     BOOST_TEST(*primes.rbegin() == 97) ;
 }
 
+template <class T>
+void test_quadratic_residue(void)
+{
+	auto primes = eratosthenes_sieve<T>(40000);
+	primes.erase(primes.begin(), primes.begin() + primes.size() * 2 / 3);
+	for (auto p : primes)
+		for (int i = 0; i < 100; i++)
+		{
+			T r = (rand() % (p - 1)) + 1;
+			T q = quadratic_residue(r, p);
+			T r1 = (q * q) % p;
+			if (q != 0)
+				BOOST_TEST(r1 == r);
+			else
+				for (i = 1; i < p; i++)
+					if ((i * i) % p == r)
+						BOOST_TEST(false);
+		}
+}
+
 test_suite* init_unit_test_suite( int /*argc*/, char* /*argv*/[] )
 {
-    framework::master_test_suite().add( BOOST_TEST_CASE( &test_zngroup<int> ) );
-    framework::master_test_suite().add( BOOST_TEST_CASE( &test_zngroup<cpp_int> ) );
-    framework::master_test_suite().add( BOOST_TEST_CASE( &test_eratosthenes<int> ) );
-    framework::master_test_suite().add( BOOST_TEST_CASE( &test_eratosthenes<cpp_int> ) );
-    return 0;
+    framework::master_test_suite().add(BOOST_TEST_CASE( &test_zngroup<int>));
+    framework::master_test_suite().add(BOOST_TEST_CASE( &test_zngroup<cpp_int>));
+    framework::master_test_suite().add(BOOST_TEST_CASE( &test_eratosthenes<int>));
+	framework::master_test_suite().add(BOOST_TEST_CASE(&test_eratosthenes<cpp_int>));
+	framework::master_test_suite().add(BOOST_TEST_CASE(&test_quadratic_residue<int>));
+	framework::master_test_suite().add(BOOST_TEST_CASE(&test_quadratic_residue<cpp_int>));
+	return 0;
 }
 

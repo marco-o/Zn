@@ -2,17 +2,21 @@
 # Test executables
 #
 set (TEST_SOURCES main.cpp)
-set (TEST_HEADERS ../include/znbasic.h ../include/zngroup.h)
+set (TEST_HEADERS ../include/znbasic.h ../include/zngroup.h 
+                  ../include/zneratosthenes_sieve.h ../include/znquadratic_residue.h)
 include_directories(../include)
 
-find_package(Boost COMPONENTS unit_test_framework)
-
-#find_package(Boost COMPONENTS unit_test_framework REQUIRED)
+if (BOOST_ROOT)
+    set(Boost_UNIT_TEST_FRAMEWORK_FOUND on)
+	set(BOOST_PATH ${BOOST_ROOT})
+else (BOOST_ROOT)
+	find_package(Boost COMPONENTS unit_test_framework)
+endif (BOOST_ROOT)
 
 if (Boost_UNIT_TEST_FRAMEWORK_FOUND)
     include_directories(${BOOST_PATH})
     add_definitions(-DHAVE_BOOST)
-    add_executable(zntest zntest.cpp)
+    add_executable(zntest zntest.cpp ${TEST_HEADERS})
     target_link_libraries(zntest ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 else (Boost_UNIT_TEST_FRAMEWORK_FOUND)
     message("BOOST not found")

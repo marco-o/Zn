@@ -28,8 +28,8 @@ namespace zn
                 }
         }
         // removing stuff past bound
-        N slot = bound / bits_per_slot ;
-        N pos = bound % bits_per_slot ;
+        N slot = (bound - 1) / bits_per_slot ;
+        N pos = (bound - 1) % bits_per_slot ;
         sieve[slot] &= static_cast<Slot>(-1) >> (bits_per_slot - pos - 1) ;
         // collect results
         std::vector<T> result ;

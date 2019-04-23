@@ -5,46 +5,7 @@
 #endif
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
-
-namespace zn
-{
-    
-
-    
-    inline bool bit_test(int n, int bit)
-    {
-        return (n >> bit) & 1;
-    }
-    
-    inline int msb(unsigned int n)
-    {
-        int i = 0 ;
-        for ( ; n ; i++)
-            n >= 1 ;
-        return i ;
-    }
-    
-    int signbit(int n)
-    {
-        return n ;
-    }
-   
-    template <class N, class E>
-    N power(N base, const E &exp)
-    {
-     //   if (signbit(exp) < 0)
-      //      return power(base, -exp) ;
-        N result(1) ;
-        size_t b = msb(exp) ;
-        for (size_t i = 0 ; i < b ; i++)
-        {
-            if (bit_test(exp, i))
-                result *= base ;
-            base *= base ;
-        }
-        return result ;
-    }
-}
+#include "znquadratic_residue.h"
 
 
 using namespace zn ;
@@ -139,6 +100,15 @@ void test_zn_var(int m)
     std::cout << "a / b = " << (a / b).value() << "(mod " << m << ")" << std::endl ;
 }
 
+template <class Int>
+void test_quadratic_residue(Int a, Int m)
+{
+	Int r = quadratic_residue(a, m);
+	std::cout << "Input = " << a << ", " << m << "\n"
+			  << " r = " << r << " (" << (r * r) % m << ")" << std::endl;
+
+}
+
 int main(int argc, char *argv[])
 {
     int a = 2 ;
@@ -149,12 +119,24 @@ int main(int argc, char *argv[])
     for (int i = 0 ; i < argc ; i++)
         if (strncmp(argv[i], "--eratosthenes=", 15) == 0)
             test_eratosthenes(atoi(argv[i] + 15)) ;
-        else if (strcmp(argv[i], "--zn") == 0)
-            test_zn<int>(a, b, m) ;
-        else if (strncmp(argv[i], "--zv=", 5) == 0)
+		else if (strcmp(argv[i], "--zn") == 0)
+		{
+			test_zn<int>(a, b, m);
+#ifdef HAVE_BOOST
+			test_zn<cpp_int>(a, b, m);
+#endif
+		}
+		else if (strncmp(argv[i], "--zv=", 5) == 0)
             test_zn_var(atoi(argv[i] + 5)) ;
         else if (strcmp(argv[i], "--power") == 0)
             test_power(a, b, m) ;
+		else if (strcmp(argv[i], "--qr") == 0)
+		{
+			test_quadratic_residue<int>(a, m);
+#ifdef HAVE_BOOST
+			test_quadratic_residue<cpp_int>(a, m);
+#endif
+		}
 #ifdef HAVE_BOOST
         else if (strcmp(argv[i], "--boost") == 0)
             test_zn<cpp_int>(a, b, m) ;
