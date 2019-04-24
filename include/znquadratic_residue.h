@@ -1,10 +1,19 @@
+//---------------------------------------------------------------------------------
+//
+//  Zn 
+//  Copyright Marco Oman 2019
+//
+// Distributed under the Boost Software License, Version 1.0. 
+// (See accompanying file LICENSE_1_0.txt or copy at 
+// http://www.boost.org/LICENSE_1_0.txt)
+//
 #ifndef znquadratic_residue_H
 #define znquadratic_residue_H
 
 namespace zn
 {
 	//
-	// Tonelli SHanks algorithm as described here
+	// Tonelli Shanks algorithm as described here
 	// https://en.wikipedia.org/wiki/Tonelli-Shanks_algorithm
 	//
 	template <class Int>
@@ -15,6 +24,8 @@ namespace zn
 		Int p2 = q / 2;
 		Int two = 2;
 
+		if (p == 2)
+			return n % p;
 		for (Int r = 0 ; bit_test(q, 0) == 0 ; s++)
 			divide_qr(q, two, q, r);
 

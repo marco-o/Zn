@@ -1,3 +1,12 @@
+//---------------------------------------------------------------------------------
+//
+//  Zn 
+//  Copyright Marco Oman 2019
+//
+// Distributed under the Boost Software License, Version 1.0. 
+// (See accompanying file LICENSE_1_0.txt or copy at 
+// http://www.boost.org/LICENSE_1_0.txt)
+//
 #include <iostream>
 #include <string.h>
 #ifdef HAVE_BOOST
@@ -6,9 +15,23 @@
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
 #include "znquadratic_residue.h"
+#include "znquadratic_sieve.h"
 
+#ifdef HAVE_BOOST
+using namespace boost::multiprecision;
+#endif
 
 using namespace zn ;
+
+#ifdef HAVE_BOOST
+
+template <class large_int, class small_int = int>
+void test_quadratic_sieve(const large_int &n, small_int base_size)
+{
+	auto result = quadratic_sieve(n, base_size);
+	std::cout << result << std::endl;
+}
+#endif
 
 void test_eratosthenes(int bound)
 {
@@ -63,7 +86,6 @@ int test_zn(T a, T b, T m)
 }
 
 #ifdef HAVE_BOOST
-using namespace boost::multiprecision ;
 template <> cpp_int module_var_t<cpp_int, 0>::value_ = cpp_int(0) ;
 void test_boost(void)
 {
@@ -114,18 +136,28 @@ int main(int argc, char *argv[])
     int a = 2 ;
     int b = 7 ; 
     int m = 19 ;
+	int base_size = 5;
+#ifdef HAVE_BOOST
+	cpp_int n = 29;
+#endif
     try
     {
-    for (int i = 0 ; i < argc ; i++)
-        if (strncmp(argv[i], "--eratosthenes=", 15) == 0)
-            test_eratosthenes(atoi(argv[i] + 15)) ;
-		else if (strcmp(argv[i], "--zn") == 0)
-		{
-			test_zn<int>(a, b, m);
+		for (int i = 0; i < argc; i++)
+			if (strncmp(argv[i], "--eratosthenes=", 15) == 0)
+				test_eratosthenes(atoi(argv[i] + 15));
+			else if (strcmp(argv[i], "--zn") == 0)
+			{
+				test_zn<int>(a, b, m);
 #ifdef HAVE_BOOST
-			test_zn<cpp_int>(a, b, m);
+				test_zn<cpp_int>(a, b, m);
 #endif
-		}
+			}
+#ifdef HAVE_BOOST
+			else if (strncmp(argv[i], "--base-size=", 12) == 0)
+				base_size = atoi(argv[i] + 12);
+			else if (strcmp(argv[i], "--qs") == 0)
+				test_quadratic_sieve(n, base_size);
+#endif
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
             test_zn_var(atoi(argv[i] + 5)) ;
         else if (strcmp(argv[i], "--power") == 0)

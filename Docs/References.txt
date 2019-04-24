@@ -1,0 +1,5 @@
+Quadratic sieve:
+	http://www.cs.virginia.edu/crab/QFS_Simple.pdf
+	http://websites.math.leidenuniv.nl/algebra/sieving.pdf
+Gaussian elimination in GF(2)
+	https://www.cs.umd.edu/~gasarch/TOPICS/factoring/fastgauss.pdf
