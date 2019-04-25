@@ -65,31 +65,39 @@ namespace zn
         return std::tuple<T, T, T>(r[i], s[i], t[i]) ;
     }
 	//
-	// Some stuff that may be useful 
+	// Some functions define in boost::multipfrecision are adapted
+	// here for predefined types
 	//
-	inline bool bit_test(int n, int bit)
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, int>::type  bit_test(N n, int bit)
 	{
 		return (n >> bit) & 1;
 	}
 
-	inline int msb(unsigned int n)
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, int>::type msb(N n)
 	{
 		int i = 0;
+		if (signbit(n) < 0)
+			n = -n;
 		for (n /= 2; n; i++)
 			n >>= 1;
 		return i;
 	}
 
-	inline void divide_qr(int n, int d, int &q, int &r)
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value>::type divide_qr(N n, N d, N &q, N &r)
 	{
 		q = n / d;
 		r = n % d;
 	}
 
-	inline int signbit(int n)
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, int>::type  signbit(N n)
 	{
-		return n;
+		return static_cast<int>(n);
 	}
+
 
 	template <class N, class E>
 	N power(N base, const E &exp)
@@ -107,9 +115,10 @@ namespace zn
 		return result;
 	}
 
-	int powm(int b, int e, int p)
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, N>::type powm(N b, N e, N p)
 	{
-		int r = 1;
+		N r = 1;
 		for (; e; e >>= 1)
 		{
 			if (e & 1)

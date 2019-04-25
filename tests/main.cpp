@@ -123,9 +123,9 @@ void test_zn_var(int m)
 }
 
 template <class Int>
-void test_quadratic_residue(Int a, Int m)
+void test_quadratic_residue(Int a, Int m, Int ps)
 {
-	Int r = quadratic_residue(a, m);
+	Int r = quadratic_residue(a, m, ps);
 	std::cout << "Input = " << a << ", " << m << "\n"
 			  << " r = " << r << " (" << (r * r) % m << ")" << std::endl;
 
@@ -136,6 +136,7 @@ int main(int argc, char *argv[])
     int a = 2 ;
     int b = 7 ; 
     int m = 19 ;
+	int ps = 1;
 	int base_size = 5;
 #ifdef HAVE_BOOST
 	cpp_int n = 29;
@@ -155,8 +156,11 @@ int main(int argc, char *argv[])
 #ifdef HAVE_BOOST
 			else if (strncmp(argv[i], "--base-size=", 12) == 0)
 				base_size = atoi(argv[i] + 12);
+			else if (strncmp(argv[i], "--n=", 4) == 0)
+				n = cpp_int(argv[i] + 4);
 			else if (strcmp(argv[i], "--qs") == 0)
-				test_quadratic_sieve(n, base_size);
+				test_quadratic_sieve<long long, int>(n.convert_to<int>(), base_size);
+				//test_quadratic_sieve<cpp_int>(n, base_size);
 #endif
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
             test_zn_var(atoi(argv[i] + 5)) ;
@@ -164,9 +168,9 @@ int main(int argc, char *argv[])
             test_power(a, b, m) ;
 		else if (strcmp(argv[i], "--qr") == 0)
 		{
-			test_quadratic_residue<int>(a, m);
+			test_quadratic_residue<long long>(a, m, ps);
 #ifdef HAVE_BOOST
-			test_quadratic_residue<cpp_int>(a, m);
+			test_quadratic_residue<cpp_int>(a, m, ps);
 #endif
 		}
 #ifdef HAVE_BOOST
@@ -177,9 +181,11 @@ int main(int argc, char *argv[])
             a = atoi(argv[i] + 4) ;
         else if (strncmp(argv[i], "--b=", 4) == 0)
             b = atoi(argv[i] + 4) ;
-        else if (strncmp(argv[i], "--m=", 4) == 0)
-            m = atoi(argv[i] + 4) ;
-    }
+		else if (strncmp(argv[i], "--m=", 4) == 0)
+			m = atoi(argv[i] + 4);
+		else if (strncmp(argv[i], "--ps=", 5) == 0)
+			ps = atoi(argv[i] + 5);
+	}
     catch (std::exception &exc)
     {
         std::cout << "Exception: " << exc.what() << std::endl ;

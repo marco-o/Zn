@@ -15,12 +15,14 @@ namespace zn
 	//
 	// Tonelli Shanks algorithm as described here
 	// https://en.wikipedia.org/wiki/Tonelli-Shanks_algorithm
+	// Parameter ps is required when p is actually a power of prime p^k 
+	// And in that case its value must be p^(k-1)
 	//
 	template <class Int>
-	Int quadratic_residue(Int n, Int p)
+	Int quadratic_residue_odd(Int n, Int p, Int ps = 1)
 	{
 		int s = 0;
-		Int q = p - 1;
+		Int q = p - ps;
 		Int p2 = q / 2;
 		Int two = 2;
 
@@ -29,7 +31,7 @@ namespace zn
 		for (Int r = 0 ; bit_test(q, 0) == 0 ; s++)
 			divide_qr(q, two, q, r);
 
-		// find quadratic non residue z using eulere criterion
+		// find quadratic non residue z using Euler's criterion
 		Int z = 2;
 		while (powm(z, p2, p) == 1) // if satisfied z *is* a quadratic residue
 			z++;
@@ -61,6 +63,23 @@ namespace zn
 			return R;
 		else 
 			return 0;
+	}
+
+	template <class Int>
+	Int quadratic_residue(Int n, Int p, Int ps = 1)
+	{
+		if (bit_test(p, 0))
+			return quadratic_residue_odd(n, p, ps);
+		else // job done only for odd n
+		{
+			if ((n & 7) != 1)
+				return 0; 
+			Int n1 = n / 2;
+			for (Int r = 1; r < n1; r += 2)
+				if ((r * r % p) == n)
+					return r;
+			return 0;
+		}
 	}
 }
 

@@ -62,22 +62,55 @@ void test_eratosthenes(void)
 }
 
 template <class T>
+void test_qrx(T r, T p, T ps = 1)
+{
+	T q = quadratic_residue(r, p, ps);
+	T r1 = (q * q) % p;
+	if (q != 0)
+	{
+		bool equal = (r1 == r);
+		BOOST_TEST(equal);
+	}
+	else
+		for (int i = 1; i < p; i++)
+			if ((i * i) % p == r)
+				BOOST_TEST(false);
+
+}
+
+template <class T>
+void test_quadratic_residue_powers(void)
+{
+	auto primes = eratosthenes_sieve<T>(100);
+	primes.erase(primes.begin()); // remove two: has a special rule
+	for (auto p : primes)
+	{
+		T p1 = p;
+		for (int k = 0; k < 10 && p1 < std::numeric_limits<int>::max() / p1; k++)
+		{
+			for (int i = 0; i < 100; i++)
+			{
+				T r = (rand() % (p1 - 1)) + 1;
+				if (gcd(r, p) == 1)
+					test_qrx(r, p1, p1 / p);
+			}
+			p1 *= p;
+		}
+	}
+}
+
+
+
+template <class T>
 void test_quadratic_residue(void)
 {
-	auto primes = eratosthenes_sieve<T>(40000);
-	primes.erase(primes.begin(), primes.begin() + primes.size() * 2 / 3);
+	auto primes = eratosthenes_sieve<T>(10000);
+	primes.erase(primes.begin(), primes.begin() + primes.size() * 4 / 5);
 	for (auto p : primes)
 		for (int i = 0; i < 100; i++)
 		{
 			T r = (rand() % (p - 1)) + 1;
-			T q = quadratic_residue(r, p);
-			T r1 = (q * q) % p;
-			if (q != 0)
-				BOOST_TEST(r1 == r);
-			else
-				for (i = 1; i < p; i++)
-					if ((i * i) % p == r)
-						BOOST_TEST(false);
+			test_qrx(r, p);
 		}
 }
 
@@ -87,6 +120,7 @@ test_suite* init_unit_test_suite( int /*argc*/, char* /*argv*/[] )
     framework::master_test_suite().add(BOOST_TEST_CASE( &test_zngroup<cpp_int>));
     framework::master_test_suite().add(BOOST_TEST_CASE( &test_eratosthenes<int>));
 	framework::master_test_suite().add(BOOST_TEST_CASE(&test_eratosthenes<cpp_int>));
+	framework::master_test_suite().add(BOOST_TEST_CASE(&test_quadratic_residue_powers<int>));
 	framework::master_test_suite().add(BOOST_TEST_CASE(&test_quadratic_residue<int>));
 	framework::master_test_suite().add(BOOST_TEST_CASE(&test_quadratic_residue<cpp_int>));
 	return 0;
