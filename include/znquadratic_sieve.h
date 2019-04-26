@@ -44,6 +44,7 @@ D safe_cast(const S &s)
 	return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
 }
 #define ZNASSERT(x) if (!(x)) std::cerr << "Assertion failed: " << #x << may_break() << std::endl ;
+#define DBG_SIEVE
 
 namespace zn
 {
@@ -58,9 +59,17 @@ namespace zn
 			small_int	prime;
 			small_int	residue; // quadratic residue
 			real		logp;
+#ifdef DBG_SIEVE
+			small_int   prime0;
+#endif // DBG_SIEVE
+
 			base_t(small_int p, small_int r) : 
 				prime(p), residue(r), logp(static_cast<real>(-std::log(p)))
-			{}
+			{
+#ifdef DBG_SIEVE
+				prime0 = prime;
+#endif // DBG_SIEVE			
+			}
 			base_t operator-(void) const
 			{
 				base_t result = *this;
@@ -133,6 +142,8 @@ namespace zn
 					}
 					if (n == 1)
 						smooths.push_back(s);
+					else
+						std::cout << (n1 + i) << ", " << values[i] << std::endl;
 				}
 			std::sort(values.begin(), values.end());
 		}
@@ -143,7 +154,8 @@ namespace zn
 			for (const auto &base : base_)
 			{
 				sieve_range(values, begin, base);
-				sieve_range(values, begin, -base);
+				if (base.prime != 2)
+					sieve_range(values, begin, -base);
 				base_t powers = base;
 				for (int i = 0; i < 10 && (powers.prime < static_cast<small_int>(size / base.prime)); i++)
 				{
@@ -151,7 +163,8 @@ namespace zn
 					if (powers.residue == 0)
 						continue;
 					sieve_range(values, begin, powers);
-					sieve_range(values, begin, -powers);
+					if (powers.prime != 2)
+						sieve_range(values, begin, -powers);
 				}
 			}
 		}
@@ -163,9 +176,19 @@ namespace zn
 			auto size = values.size();
 			std::vector<real>::size_type pos = safe_cast<small_int, large_int>(n - begin);
 			ZNASSERT(((n *n - n_) % base.prime) == 0);
-
+#ifdef DBG_SIEVE
+			int errs = 0;
+#endif
 			for (; pos < size; pos += base.prime)
+			{
 				values[pos] += base.logp;
+#ifdef DBG_SIEVE
+				if (ns_[pos] % base.prime0 != 0)
+					errs++;
+				else
+					ns_[pos] /= base.prime0;
+#endif
+			}
 
 		}
 		std::vector<real> build_sieving_range(large_int n1, small_int range)
@@ -174,8 +197,11 @@ namespace zn
 			large_int n2 = n1 * n1 - n_;
 			for (small_int i = 0; i < range; i++)
 			{
-				n2 += n1 * 2 + 1;
 				data[i] = std::log(safe_cast<real>(n2));
+#ifdef DBG_SIEVE
+				ns_.push_back(n2);
+#endif
+				n2 += n1 * 2 + 1;
 				n1++;
 			}
 			return data;
@@ -194,6 +220,9 @@ namespace zn
 
 		large_int			n_;
 		std::vector<base_t> base_;
+#ifdef DBG_SIEVE
+		std::vector<large_int> ns_;
+#endif
 	};
 
 

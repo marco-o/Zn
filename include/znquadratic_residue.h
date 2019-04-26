@@ -74,8 +74,8 @@ namespace zn
 		{
 			if ((n & 7) != 1)
 				return 0; 
-			Int n1 = n / 2;
-			for (Int r = 1; r < n1; r += 2)
+			Int n1 = (n + 1)/ 2;
+			for (Int r = 1; r <= n1; r += 2)
 				if ((r * r % p) == n)
 					return r;
 			return 0;

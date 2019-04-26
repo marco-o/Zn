@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 			else if (strncmp(argv[i], "--n=", 4) == 0)
 				n = cpp_int(argv[i] + 4);
 			else if (strcmp(argv[i], "--qs") == 0)
-				test_quadratic_sieve<long long, int>(n.convert_to<int>(), base_size);
+				test_quadratic_sieve<long long, int>(n.convert_to<long long>(), base_size);
 				//test_quadratic_sieve<cpp_int>(n, base_size);
 #endif
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
