@@ -69,15 +69,15 @@ namespace zn
 	// here for predefined types
 	//
 	template <class N>
-	typename std::enable_if<std::is_integral<N>::value, int>::type  bit_test(N n, int bit)
+	typename std::enable_if<std::is_integral<N>::value, int>::type  bit_test(N n, unsigned int bit)
 	{
 		return (n >> bit) & 1;
 	}
 
 	template <class N>
-	typename std::enable_if<std::is_integral<N>::value, int>::type msb(N n)
+	typename std::enable_if<std::is_integral<N>::value, unsigned int>::type msb(N n)
 	{
-		int i = 0;
+		unsigned int i = 0;
 		if (signbit(n) < 0)
 			n = -n;
 		for (n /= 2; n; i++)
@@ -105,8 +105,8 @@ namespace zn
 		//   if (signbit(exp) < 0)
 		//      return power(base, -exp) ;
 		N result(1);
-		size_t b = msb(exp);
-		for (size_t i = 0; i <= b; i++)
+		unsigned int b = msb(exp);
+		for (unsigned int i = 0; i <= b; i++)
 		{
 			if (bit_test(exp, i))
 				result *= base;

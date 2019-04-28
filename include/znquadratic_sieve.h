@@ -102,7 +102,7 @@ namespace zn
 				r(1), n(n1), e(base.size() / small_uint_bits + 1, 0), s(smooth_valid_e) 
 			{
 				large_int r2, q;
-				small_int base_size = base.size();
+				small_int base_size = static_cast<small_int>(base.size());
 				for (small_int j = 0; j < base_size; j++)
 				{
 					const auto &b = base[j];
@@ -170,19 +170,19 @@ namespace zn
 			}
 			void remap(const std::vector<int> &index, size_t base_slots)
 			{
-				size_t size = e.size();
-				for (size_t i = 0; i < size; i++)
+				unsigned int size = static_cast<unsigned int>(e.size());
+				for (unsigned int i = 0; i < size; i++)
 					if (e[i])
 					{
 						auto value = e[i];
 						e[i] = 0; // a bit tricky but ok
-						for (size_t j = 0; j < small_uint_bits; j++)
+						for (unsigned int j = 0; j < small_uint_bits; j++)
 							if (bit_test(value, j))
 							{
-								size_t old_pos = i * small_uint_bits + j;
-								size_t new_pos = index[old_pos];
-								int slot = new_pos / small_uint_bits;
-								int bit = new_pos % small_uint_bits;
+								unsigned int old_pos = i * small_uint_bits + j;
+								unsigned int new_pos = index[old_pos];
+								unsigned int slot = new_pos / small_uint_bits;
+								unsigned int bit = new_pos % small_uint_bits;
 								e[slot] ^= 1 << bit;
 							}
 					}
@@ -223,7 +223,7 @@ namespace zn
 #endif
 			for (; ;)
 			{
-				int eraseable = compact_base(smooths);
+				auto eraseable = compact_base(smooths);
 				for (int count = 2; count <= max_base_count; count++)
 					eraseable += simplyfy_cycles(smooths, count);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
@@ -234,21 +234,29 @@ namespace zn
 				else
 					break;
 			}
-			return solve(smooths);
+			if (smooths.size() >= base_.size())
+				return solve(smooths);
+			else
+			{
+#if DBG_SIEVE >= DBG_SIEVE_WAARNING
+				std::cout << "Not enough smooths = " << smooths.size() << " < " << base_.size() << std::endl;
+#endif			
+				return 1;
+			}
 		}
 	private:
 		large_int solve(std::vector<smooth_t> &smooths)
 		{
-			size_t base_size = base_.size() ;
-			size_t smooth_size = smooths.size();
-			size_t key_col = base_size + 1;
-			int slot = key_col / small_uint_bits;
-			int bit = key_col % small_uint_bits;
+			unsigned int base_size = static_cast<unsigned int>(base_.size()) ;
+			unsigned int smooth_size = static_cast<unsigned int>(smooths.size());
+			unsigned int key_col = base_size + 1;
+			unsigned int slot = key_col / small_uint_bits;
+			unsigned int bit = key_col % small_uint_bits;
 	/*		small_uint bitp = 1 << bit;
 			for (auto &smooth : smooths)
 				smooth.e[slot] |= bitp;*/
 			// std gaussian elimination
-			for (size_t i = 0; i < base_size; i++)
+			for (unsigned int i = 0; i < base_size; i++)
 			{
 				// search pivot
 				slot = i / small_uint_bits;
@@ -259,14 +267,14 @@ namespace zn
 						std::swap(smooths[j], smooths[i]);
 						break;
 					}
-				if (!bit_test<small_uint>(smooths[i].e[slot], bit)) // not found
+				if (!bit_test(smooths[i].e[slot], bit)) // not found
 				{
 					base_[i].count = 0;
 					continue;
 				}
 				smooth_t &smooth = smooths[i];
 				for (size_t j = i + 1; j < smooth_size; j++)
-					if (bit_test<small_uint>(smooths[j].e[slot], bit))
+					if (bit_test(smooths[j].e[slot], bit))
 					{
 						smooths[j].combine(smooth, n_, base_);
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
@@ -300,7 +308,7 @@ namespace zn
 			                const std::pair<large_int, small_int> &range, 
 			                const std::vector<real> &values)
 		{
-			small_int base_size = base_.size();
+			small_int base_size = static_cast<small_int>(base_.size());
 			for (small_int i = 0; i < range.second; i++)
 				if (values[i] < 3)
 				{
@@ -393,15 +401,15 @@ namespace zn
 				base.count = 0;
 
 			size_t smooth_count = smooths.size();
-			for (size_t k = 0 ; k < smooth_count ; k++)
+			for (unsigned int k = 0 ; k < smooth_count ; k++)
 			{
 				const auto &smooth = smooths[k];
 				size_t slots = smooth.e.size();
-				for (size_t i = 0 ; i < slots ; i++)
+				for (unsigned int i = 0 ; i < slots ; i++)
 					if (smooth.e[i])
 					{
 						auto slot = smooth.e[i];
-						for (size_t j = 0; j < small_uint_bits; j++)
+						for (unsigned int j = 0; j < small_uint_bits; j++)
 							if (bit_test(slot, j))
 							{
 								auto &base = base_[i * small_uint_bits + j];
