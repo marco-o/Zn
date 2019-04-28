@@ -44,7 +44,13 @@ D safe_cast(const S &s)
 	return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
 }
 #define ZNASSERT(x) if (!(x)) std::cerr << "Assertion failed: " << #x << may_break() << std::endl ;
-#define DBG_SIEVE
+#define DBG_SIEVE_ERROR		1
+#define DBG_SIEVE_WARNINIG  2
+#define DGB_SIEVE_INFO		3
+#define DBG_SIEVE_TRACE		4
+#define DBG_SIEVE_DEBUG		5
+#define DBG_SIEVE			DBG_SIEVE_DEBUG
+
 
 namespace zn
 {
@@ -59,14 +65,14 @@ namespace zn
 			small_int	prime;
 			small_int	residue; // quadratic residue
 			real		logp;
-#ifdef DBG_SIEVE
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 			small_int   prime0;
 #endif // DBG_SIEVE
 
 			base_t(small_int p, small_int r) : 
 				prime(p), residue(r), logp(static_cast<real>(-std::log(p)))
 			{
-#ifdef DBG_SIEVE
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 				prime0 = prime;
 #endif // DBG_SIEVE			
 			}
@@ -79,9 +85,8 @@ namespace zn
 			void compose(const base_t &rhs, const large_int &n)
 			{
 				prime *= rhs.prime;
-				logp += rhs.logp;
-				small_int n1 = safe_cast<small_int>(n % prime);
-				residue = quadratic_residue(n1, prime); // actually a power of prime
+				large_int n1 = n % prime;
+				residue = static_cast<int>(quadratic_residue<large_int>(n1, prime, prime / rhs.prime)); // actually a power of prime
 			}
 		};
 		struct smooth_t
@@ -120,7 +125,7 @@ namespace zn
 			large_int q, r;
 			std::vector<smooth_t> smooths;
 			for (small_int i = 0; i < range; i++)
-				if (values[i] < 1)
+				if (values[i] < 3)
 				{
 					large_int n = n1 + i;
 					n = n * n - n_;
@@ -157,11 +162,12 @@ namespace zn
 				if (base.prime != 2)
 					sieve_range(values, begin, -base);
 				base_t powers = base;
-				for (int i = 0; i < 10 && (powers.prime < static_cast<small_int>(size / base.prime)); i++)
+				small_int prime_power_end = static_cast<small_int>(std::numeric_limits<small_int>::max() / base.prime);
+				for (int i = 0; (i < 10) && (powers.prime < prime_power_end); i++)
 				{
 					powers.compose(base, n_);
 					if (powers.residue == 0)
-						continue;
+						break;
 					sieve_range(values, begin, powers);
 					if (powers.prime != 2)
 						sieve_range(values, begin, -powers);
@@ -176,17 +182,23 @@ namespace zn
 			auto size = values.size();
 			std::vector<real>::size_type pos = safe_cast<small_int, large_int>(n - begin);
 			ZNASSERT(((n *n - n_) % base.prime) == 0);
-#ifdef DBG_SIEVE
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 			int errs = 0;
 #endif
 			for (; pos < size; pos += base.prime)
 			{
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+				if (abs(values[pos] - std::log(ns_[pos])) > 1e-4)
+					std::cout << "Hey!\n";
+#endif
 				values[pos] += base.logp;
-#ifdef DBG_SIEVE
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 				if (ns_[pos] % base.prime0 != 0)
 					errs++;
 				else
 					ns_[pos] /= base.prime0;
+				if (abs(values[pos] - std::log(ns_[pos])) > 1e-4)
+					std::cout << "Hey!\n";
 #endif
 			}
 
@@ -198,7 +210,7 @@ namespace zn
 			for (small_int i = 0; i < range; i++)
 			{
 				data[i] = std::log(safe_cast<real>(n2));
-#ifdef DBG_SIEVE
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 				ns_.push_back(n2);
 #endif
 				n2 += n1 * 2 + 1;
@@ -220,7 +232,7 @@ namespace zn
 
 		large_int			n_;
 		std::vector<base_t> base_;
-#ifdef DBG_SIEVE
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 		std::vector<large_int> ns_;
 #endif
 	};
