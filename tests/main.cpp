@@ -28,8 +28,9 @@ using namespace zn ;
 template <class large_int, class small_int = int>
 void test_quadratic_sieve(const large_int &n, small_int base_size)
 {
-	auto result = quadratic_sieve(n, base_size);
-	std::cout << result << std::endl;
+	auto p1 = quadratic_sieve(n, base_size);
+	auto p2 = n / p1;
+	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
 #endif
 
@@ -160,7 +161,8 @@ int main(int argc, char *argv[])
 				n = cpp_int(argv[i] + 4);
 			else if (strcmp(argv[i], "--qs") == 0)
 				test_quadratic_sieve<long long, int>(n.convert_to<long long>(), base_size);
-				//test_quadratic_sieve<cpp_int>(n, base_size);
+			else if (strcmp(argv[i], "--qsc") == 0)
+				test_quadratic_sieve<cpp_int>(n, base_size);
 #endif
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
             test_zn_var(atoi(argv[i] + 5)) ;
