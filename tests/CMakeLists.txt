@@ -3,7 +3,8 @@
 #
 
 set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h 
-                  ../include/zneratosthenes_sieve.h ../include/znquadratic_residue.h)
+                  ../include/zneratosthenes_sieve.h ../include/znquadratic_residue.h
+				  ../include/znquadratic_sieve.h)
 include_directories(../include)
 
 if (BOOST_ROOT)
