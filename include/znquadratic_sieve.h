@@ -11,6 +11,8 @@
 #define znquadratic_sieve_H
 
 #include <tuple>
+#include <future>
+#include <list>
 
 char *may_break(void)
 {
@@ -190,6 +192,7 @@ namespace zn
 				s = smooth_valid_e;
 			}
 		};
+		typedef std::vector<smooth_t> smooth_vect_t;
 		quadratic_sieve_t(const large_int &n, small_int base_size) : n_(n)
 		{
 			// double the range; half of them won't be a quadratic residue
@@ -202,24 +205,33 @@ namespace zn
 				if ((r = quadratic_residue(n1, p)) != 0)
 					base_.push_back(base_t(p, r));
 			}
+			sieve_thrs_ = safe_cast<real>(std::log(*primes.rbegin())) / 2;
 		}
+
 		large_int sieve(void)
 		{
 			std::pair<large_int, small_int> range;
 			range.first = safe_cast<large_int>(sqrt(n_) + 1);
 			range.second = static_cast<small_int>(std::pow(base_.size(), 2.5));
-			auto values = build_sieving_range(range);
-			sieve_range(values, range.first);
-#if DBG_SIEVE >= DBG_SIEVE_TRACE
-			std::cout << "Sieved  " << values.size() << " values" << std::endl;
-#endif
-			std::vector<smooth_t> smooths;
-			collect_smooth(smooths, range, values);
+			std::list<std::future<smooth_vect_t>> task;
+			auto cores = std::thread::hardware_concurrency();
+			for (size_t i = 0; i < cores; i++)
+			{
+				task.emplace_back(std::async(std::launch::async, [this, range]()
+				{return sieve_range(range); }));
+				range = next_range(range);
+			}
+			smooth_vect_t smooths;
+			while (!task.empty())
+			{
+				auto it = task.begin();
+				it->wait();
+				smooth_vect_t result = it->get();
+				smooths.insert(smooths.end(), result.begin(), result.end());
+				task.pop_front();
+			}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Found  " << smooths.size() << " values" << std::endl;
-#endif
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-			std::sort(values.begin(), values.end());
+			std::cout << "Smooths = " << smooths.size() << std::endl;
 #endif
 			for (; ;)
 			{
@@ -245,6 +257,12 @@ namespace zn
 			}
 		}
 	private:
+		std::pair<large_int, small_int> next_range(const std::pair<large_int, small_int> &r)
+		{
+			std::pair<large_int, small_int> result(r);
+			result.first += result.second;
+			return result;
+		}
 		large_int solve(std::vector<smooth_t> &smooths)
 		{
 			unsigned int base_size = static_cast<unsigned int>(base_.size()) ;
@@ -304,13 +322,13 @@ namespace zn
 			}
 			return 1;
 		}
-		void collect_smooth(std::vector<smooth_t> &smooths, 
-			                const std::pair<large_int, small_int> &range, 
-			                const std::vector<real> &values)
+		std::vector<smooth_t> collect_smooth(const std::pair<large_int, small_int> &range, 
+											 const std::vector<real> &values)
 		{
+			std::vector<smooth_t> smooths;
 			small_int base_size = static_cast<small_int>(base_.size());
 			for (small_int i = 0; i < range.second; i++)
-				if (values[i] < 3)
+				if (values[i] < sieve_thrs_)
 				{
 					large_int n = range.first + i;
 					large_int r = n * n - n_;
@@ -327,6 +345,13 @@ namespace zn
 						std::cout << (range.first + i) << ", " << values[i] << std::endl;
 #endif
 				}
+			return smooths;
+		}
+		smooth_vect_t sieve_range(const std::pair<large_int, small_int> &range)
+		{
+			auto values = build_sieving_range(range);
+			sieve_range(values, range.first);
+			return collect_smooth(range, values);
 		}
 		void sieve_range(std::vector<real> &values, const large_int &begin)
 		{
@@ -376,9 +401,8 @@ namespace zn
 					std::cout << "Hey!\n";
 #endif
 			}
-
 		}
-		std::vector<real> build_sieving_range(const std::pair<large_int, small_int> &range)
+		std::vector<real> build_sieving_range_exact(const std::pair<large_int, small_int> &range)
 		{
 			large_int n1 = range.first;
 			large_int n2 = n1 * n1 - n_;
@@ -393,6 +417,37 @@ namespace zn
 				n1++;
 			}
 			return data;
+		}
+		std::vector<real> build_sieving_range(const std::pair<large_int, small_int> &range)
+		{
+			large_int n1 = range.first;
+			large_int n2 = n1 * n1 - n_;
+			large_int m1 = range.first + range.second;
+			large_int m2 = m1 * m1 - n_;
+			real rn = std::abs(safe_cast<real>(n2));
+			real rm = std::abs(safe_cast<real>(m2));
+			real t = rn / rm + rm / rn - 2;
+			if (t < 3e-3)
+			{
+				std::vector<real> data(range.second);
+				rn = std::log(rn);
+				rm = std::log(rm);
+				real delta = (rm - rn) / range.second;
+				for (small_int i = 0; i < range.second; i++)
+					data[i] = rn + i * delta;
+				return data;
+			}
+			else if (range.second < 32)
+				return build_sieving_range_exact(range);
+			else
+			{
+				std::pair<large_int, small_int> r1(range.first, range.second / 2);
+				std::vector<real> data1 = build_sieving_range(r1);
+				std::pair<large_int, small_int> r2(r1.first + r1.second, range.second - r1.second);
+				std::vector<real> data2 = build_sieving_range(r2);
+				data1.insert(data1.end(), data2.begin(), data2.end());
+				return data1;
+			}
 		}
 		// removes element that appears only once
 		size_t compact_base(std::vector<smooth_t> &smooths)
@@ -505,7 +560,7 @@ namespace zn
 				result = base_size * std::log(result);
 			return static_cast<int>(result);
 		}
-
+		real				sieve_thrs_;
 		large_int			n_;
 		std::vector<base_t> base_;
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
