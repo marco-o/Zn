@@ -207,31 +207,37 @@ namespace zn
 			}
 			sieve_thrs_ = safe_cast<real>(std::log(*primes.rbegin())) / 2;
 		}
-
 		large_int sieve(void)
 		{
 			std::pair<large_int, small_int> range;
 			range.first = safe_cast<large_int>(sqrt(n_) + 1);
 			range.second = static_cast<small_int>(std::pow(base_.size(), 2.5));
 			std::list<std::future<smooth_vect_t>> task;
+#ifdef _M_X64
+			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
+#else
+			const size_t max_mem = 1 * 1024 * 1048576LL; // 1GB
+#endif
 			auto cores = std::thread::hardware_concurrency();
-			for (size_t i = 0; i < cores; i++)
-			{
-				task.emplace_back(std::async(std::launch::async, [this, range]()
-				{return sieve_range(range); }));
-				range = next_range(range);
-			}
+			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
 			smooth_vect_t smooths;
-			while (!task.empty())
+			while (smooths.size() < base_.size())
 			{
-				auto it = task.begin();
-				it->wait();
-				smooth_vect_t result = it->get();
-				smooths.insert(smooths.end(), result.begin(), result.end());
-				task.pop_front();
-			}
+				while (task.size() < cores)
+				{
+					task.emplace_back(std::async(std::launch::async, [this, range]()
+					{return sieve_range(range); }));
+					range = next_range(range);
+				}
+				pop_sieving_task(task, smooths);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Smooths = " << smooths.size() << std::endl;
+				std::cout << "Found = " << smooths.size() << "smooths\r" << std::flush;
+#endif
+			}
+			while (!task.empty())
+				pop_sieving_task(task, smooths);
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			std::cout << std::endl;
 #endif
 			for (; ;)
 			{
@@ -262,6 +268,14 @@ namespace zn
 			std::pair<large_int, small_int> result(r);
 			result.first += result.second;
 			return result;
+		}
+		void pop_sieving_task(std::list<std::future<smooth_vect_t>> &task, smooth_vect_t &smooths)
+		{
+			auto it = task.begin();
+			it->wait();
+			smooth_vect_t result = it->get();
+			smooths.insert(smooths.end(), result.begin(), result.end());
+			task.pop_front();
 		}
 		large_int solve(std::vector<smooth_t> &smooths)
 		{
@@ -349,7 +363,9 @@ namespace zn
 		}
 		smooth_vect_t sieve_range(const std::pair<large_int, small_int> &range)
 		{
-			auto values = build_sieving_range(range);
+			std::vector<real> values;
+			values.reserve(range.second);
+			build_sieving_range(range, values);
 			sieve_range(values, range.first);
 			return collect_smooth(range, values);
 		}
@@ -402,23 +418,22 @@ namespace zn
 #endif
 			}
 		}
-		std::vector<real> build_sieving_range_exact(const std::pair<large_int, small_int> &range)
+		void build_sieving_range_exact(const std::pair<large_int, small_int> &range, std::vector<real> &values)
 		{
 			large_int n1 = range.first;
 			large_int n2 = n1 * n1 - n_;
 			std::vector<real> data(range.second);
 			for (small_int i = 0; i < range.second; i++)
 			{
-				data[i] = std::log(safe_cast<real>(n2));
+				values.push_back(std::log(safe_cast<real>(n2)));
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
 				ns_.push_back(n2);
 #endif
 				n2 += n1 * 2 + 1;
 				n1++;
 			}
-			return data;
 		}
-		std::vector<real> build_sieving_range(const std::pair<large_int, small_int> &range)
+		void  build_sieving_range(const std::pair<large_int, small_int> &range, std::vector<real> &values)
 		{
 			large_int n1 = range.first;
 			large_int n2 = n1 * n1 - n_;
@@ -434,19 +449,16 @@ namespace zn
 				rm = std::log(rm);
 				real delta = (rm - rn) / range.second;
 				for (small_int i = 0; i < range.second; i++)
-					data[i] = rn + i * delta;
-				return data;
+					values.push_back(rn + i * delta);
 			}
 			else if (range.second < 32)
-				return build_sieving_range_exact(range);
+				build_sieving_range_exact(range, values);
 			else
 			{
 				std::pair<large_int, small_int> r1(range.first, range.second / 2);
-				std::vector<real> data1 = build_sieving_range(r1);
+				build_sieving_range(r1, values);
 				std::pair<large_int, small_int> r2(r1.first + r1.second, range.second - r1.second);
-				std::vector<real> data2 = build_sieving_range(r2);
-				data1.insert(data1.end(), data2.begin(), data2.end());
-				return data1;
+				build_sieving_range(r2, values);
 			}
 		}
 		// removes element that appears only once
