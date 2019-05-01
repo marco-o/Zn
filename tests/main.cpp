@@ -10,7 +10,10 @@
 #include <iostream>
 #include <string.h>
 #ifdef HAVE_BOOST
+#ifdef HAVE_GMP
 #include <boost/multiprecision/cpp_int.hpp>
+#endif
+#include <boost/multiprecision/gmp.hpp>
 #endif
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
@@ -140,7 +143,7 @@ int main(int argc, char *argv[])
 	int ps = 1;
 	int base_size = 5;
 #ifdef HAVE_BOOST
-	cpp_int n = 29;
+	const char *n = "29";
 #endif
     try
     {
@@ -158,11 +161,15 @@ int main(int argc, char *argv[])
 			else if (strncmp(argv[i], "--base-size=", 12) == 0)
 				base_size = atoi(argv[i] + 12);
 			else if (strncmp(argv[i], "--n=", 4) == 0)
-				n = cpp_int(argv[i] + 4);
+				n = argv[i] + 4;
 			else if (strcmp(argv[i], "--qs") == 0)
-				test_quadratic_sieve<long long, int>(n.convert_to<long long>(), base_size);
+				test_quadratic_sieve<long long, int>(atol(n), base_size);
 			else if (strcmp(argv[i], "--qsc") == 0)
-				test_quadratic_sieve<cpp_int>(n, base_size);
+				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
+#ifdef HAVE_GMP
+			else if (strcmp(argv[i], "--qsg") == 0)
+				test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
+#endif
 #endif
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
             test_zn_var(atoi(argv[i] + 5)) ;

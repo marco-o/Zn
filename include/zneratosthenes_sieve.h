@@ -29,7 +29,7 @@ namespace zn
             N slot = p / bits_per_slot ;
             N pos = p % bits_per_slot ;
             if (sieve[slot] & (1 << pos))
-                for (int j = p * p ; j < bound ; j += p)
+                for (N j = p * p ; j < bound ; j += p)
                 {
                     slot = j / bits_per_slot ;
                     pos = j % bits_per_slot ;

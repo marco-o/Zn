@@ -4,8 +4,13 @@
 
 set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h 
                   ../include/zneratosthenes_sieve.h ../include/znquadratic_residue.h
-				  ../include/znquadratic_sieve.h)
+				  ../include/znquadratic_sieve.h ../include/znqueue.h)
 include_directories(../include)
+
+if (WIN32)
+	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+	set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
+endif (WIN32)
 
 if (BOOST_ROOT)
     set(Boost_UNIT_TEST_FRAMEWORK_FOUND on)
@@ -20,12 +25,19 @@ if (Boost_UNIT_TEST_FRAMEWORK_FOUND)
     add_executable(zntest zntest.cpp ${COMMON_HEADERS})
     target_link_libraries(zntest ${Boost_UNIT_TEST_FRAMEWORK_LIBRARY})
 	add_executable(numbox numbox.cpp ${COMMON_HEADERS})
+	if (GMP_ROOT)
+		add_definitions(-DHAVE_GMP)
+		include_directories(${GMP_ROOT})
+		link_directories(${GMP_ROOT})
+	endif (GMP_ROOT)
 else (Boost_UNIT_TEST_FRAMEWORK_FOUND)
     message("BOOST not found")
 endif (Boost_UNIT_TEST_FRAMEWORK_FOUND)
 
-project(zn)
-
-
 add_executable(main main.cpp ${COMMON_HEADERS})
 
+if (Boost_UNIT_TEST_FRAMEWORK_FOUND)
+	if (GMP_ROOT)
+		target_link_libraries(main mpir.lib)
+	endif (GMP_ROOT)
+endif (Boost_UNIT_TEST_FRAMEWORK_FOUND)
