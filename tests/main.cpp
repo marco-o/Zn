@@ -10,10 +10,10 @@
 #include <iostream>
 #include <string.h>
 #ifdef HAVE_BOOST
-#ifdef HAVE_GMP
 #include <boost/multiprecision/cpp_int.hpp>
-#endif
+#ifdef HAVE_GMP
 #include <boost/multiprecision/gmp.hpp>
+#endif
 #endif
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
@@ -137,13 +137,17 @@ void test_quadratic_residue(Int a, Int m, Int ps)
 
 int main(int argc, char *argv[])
 {
-    int a = 2 ;
-    int b = 7 ; 
-    int m = 19 ;
-	int ps = 1;
-	int base_size = 5;
+	long long a = 2 ;
+	long long b = 7 ;
+	long long m = 19 ;
+	long long ps = 1;
+	long long base_size = 5;
 #ifdef HAVE_BOOST
 	const char *n = "29";
+	const char *a1 = "2";
+	const char *m1 = "19";
+	const char *b1 = "7";
+	const char *ps1 = "1";
 #endif
     try
     {
@@ -152,7 +156,7 @@ int main(int argc, char *argv[])
 				test_eratosthenes(atoi(argv[i] + 15));
 			else if (strcmp(argv[i], "--zn") == 0)
 			{
-				test_zn<int>(a, b, m);
+				test_zn<int>(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m));
 #ifdef HAVE_BOOST
 				test_zn<cpp_int>(a, b, m);
 #endif
@@ -163,7 +167,7 @@ int main(int argc, char *argv[])
 			else if (strncmp(argv[i], "--n=", 4) == 0)
 				n = argv[i] + 4;
 			else if (strcmp(argv[i], "--qs") == 0)
-				test_quadratic_sieve<long long, int>(atol(n), base_size);
+				test_quadratic_sieve<long long, int>(atoll(n), static_cast<int>(base_size));
 			else if (strcmp(argv[i], "--qsc") == 0)
 				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
 #ifdef HAVE_GMP
@@ -174,26 +178,25 @@ int main(int argc, char *argv[])
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
             test_zn_var(atoi(argv[i] + 5)) ;
         else if (strcmp(argv[i], "--power") == 0)
-            test_power(a, b, m) ;
+            test_power(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m)) ;
 		else if (strcmp(argv[i], "--qr") == 0)
-		{
 			test_quadratic_residue<long long>(a, m, ps);
 #ifdef HAVE_BOOST
-			test_quadratic_residue<cpp_int>(a, m, ps);
+		else if (strcmp(argv[i], "--qrc") == 0)
+			test_quadratic_residue<cpp_int>(cpp_int(a1), cpp_int(m1), cpp_int(ps1));
 #endif
-		}
 #ifdef HAVE_BOOST
         else if (strcmp(argv[i], "--boost") == 0)
             test_zn<cpp_int>(a, b, m) ;
 #endif
         else if (strncmp(argv[i], "--a=", 4) == 0)
-            a = atoi(argv[i] + 4) ;
+            a = atoll(a1 = argv[i] + 4) ;
         else if (strncmp(argv[i], "--b=", 4) == 0)
-            b = atoi(argv[i] + 4) ;
+            b = atoll(b1 = argv[i] + 4) ;
 		else if (strncmp(argv[i], "--m=", 4) == 0)
-			m = atoi(argv[i] + 4);
+			m = atoll(m1 = argv[i] + 4);
 		else if (strncmp(argv[i], "--ps=", 5) == 0)
-			ps = atoi(argv[i] + 5);
+			ps = atoll(ps1 = argv[i] + 5);
 	}
     catch (std::exception &exc)
     {

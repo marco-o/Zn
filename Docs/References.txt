@@ -3,3 +3,7 @@ Quadratic sieve:
 	http://websites.math.leidenuniv.nl/algebra/sieving.pdf
 Gaussian elimination in GF(2)
 	https://www.cs.umd.edu/~gasarch/TOPICS/factoring/fastgauss.pdf
+
+Build command: something like
+cmake .. -DBOOST_ROOT=/c/Users/marco.oman/Documents/boost_1_70_0/ \
+         -DGMP_ROOT=/C/Users/marco.oman/Documents/git/mpir/lib/Win32/Release

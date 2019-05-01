@@ -71,16 +71,12 @@ namespace zn
 			int			count ;
 			int			index[max_base_count];
 			real		logp;
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 			small_int   prime0;
-#endif // DBG_SIEVE
 
 			base_t(small_int p, small_int r) : 
 				prime(p), residue(r), logp(static_cast<real>(-std::log(p)))
 			{
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 				prime0 = prime;
-#endif // DBG_SIEVE			
 			}
 			base_t operator-(void) const
 			{
@@ -92,7 +88,7 @@ namespace zn
 			{
 				prime *= rhs.prime;
 				large_int n1 = n % prime;
-				residue = static_cast<int>(quadratic_residue<large_int>(n1, prime, prime / rhs.prime)); // actually a power of prime
+				residue = static_cast<small_int>(quadratic_residue<large_int>(n1, prime, prime / rhs.prime0)); // actually a power of prime
 			}
 		};
 		enum smooth_status_e { smooth_delete_e, smooth_touch_e, smooth_valid_e };
@@ -220,29 +216,44 @@ namespace zn
 #ifdef _M_X64
 			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
 #else
-			const size_t max_mem = 1 * 1024 * 1048576LL; // 1GB
+			const size_t max_mem = 1 * 512 * 1048576LL; // 1GB
 #endif
 			auto cores = std::thread::hardware_concurrency();
 			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
+#if 0
+			smooth_vect_t smooths;
+			while (smooths.size() < base_.size())
+			{
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+				std::cout << "Sieving " << range.first 
+					      << " , " << range.second << "(" << smooths.size() << " )\r" << std::flush;
+#endif
+				auto smooth = sieve_range(range);
+				smooths.insert(smooths.end(), smooth.begin(), smooth.end());
+				range = next_range(range);
+			}
+#else
 			for (size_t i = 0 ; i < cores ; i++)
 			{
 				threads_.emplace_back(&quadratic_sieve_t::sieving_thread, this);
 				ranges_to_sieve_.push(range);
 				range = next_range(range);
 			}
-
+			int count = 0;
 			smooth_vect_t smooths;
 			while (smooths.size() < base_.size())
 			{
 				auto smooth = smooths_found_.pop();
 				smooths.insert(smooths.end(), smooth.begin(), smooth.end());
 #if DBG_SIEVE >= DBG_SIEVE_INFO
-				std::cout << "Found = " << smooths.size() << " smooths\r" << std::flush;
+				std::cout << "Found = " << smooths.size() << " smooths (" << count++ << ")\r" << std::flush;
 #endif
 				ranges_to_sieve_.push(range);
 				range = next_range(range);
 			}
-			// stop sieving threads
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			std::cout << "\nFound = " << smooths.size() << " smooths, base = " << base_.size() << std::endl;
+#endif			// stop sieving threads
 			range.second = 0;
 			ranges_to_sieve_.clear();
 			for (size_t i = 0; i < cores; i++)
@@ -258,8 +269,6 @@ namespace zn
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Found = " << smooths.size() << " smooths" << std::endl;
 #endif
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << std::endl;
 #endif
 			for (; ;)
 			{
@@ -275,7 +284,12 @@ namespace zn
 					break;
 			}
 			if (smooths.size() >= base_.size())
+			{
+				size_t required = base_.size() + base_.size() / 10 + 10;
+				if (required < smooths.size())
+					smooths.erase(smooths.begin() + required, smooths.end());
 				return solve(smooths);
+			}
 			else
 			{
 #if DBG_SIEVE >= DBG_SIEVE_WARNING
@@ -411,7 +425,16 @@ namespace zn
 			auto size = values.size();
 			size_t pos = safe_cast<size_t, large_int>(n - begin);
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
-			ZNASSERT(((n *n - n_) % base.prime) == 0);
+			if (((n *n - n_) % base.prime) != 0)
+			{
+				std::cout << "Error: n = " << n 
+					      << "\nn_ = " << n_ 
+					      << "\np = " << base.prime 
+					      << "\nr = " << base.residue 
+					      << "\np0= " << base.prime0
+					      << std::endl;
+				throw std::runtime_error("Quadratic residue problem");
+			}
 			int errs = 0;
 #endif
 			for (; pos < size; pos += static_cast<size_t>(base.prime))
@@ -576,9 +599,17 @@ namespace zn
 		}
 		void sieving_thread(void)
 		{
-			auto range = ranges_to_sieve_.pop();
-			for ( ; range.second != 0 ; range = ranges_to_sieve_.pop())
-				smooths_found_.push(sieve_range(range));
+			try
+			{
+				auto range = ranges_to_sieve_.pop();
+				for (; range.second != 0; range = ranges_to_sieve_.pop())
+
+					smooths_found_.push(sieve_range(range));
+			}
+			catch (std::exception &exc)
+			{
+				std::cout << "Exception in thread: " << exc.what() << std::endl;
+			}
 		}
 		//
 		// this function does an approximate reverse of estimation
