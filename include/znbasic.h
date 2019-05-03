@@ -74,6 +74,13 @@ namespace zn
 		return (n >> bit) & 1;
 	}
 
+
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, int>::type  signbit(N n)
+	{
+		return static_cast<int>(n);
+	}
+
 	template <class N>
 	typename std::enable_if<std::is_integral<N>::value, unsigned int>::type msb(N n)
 	{
@@ -90,12 +97,6 @@ namespace zn
 	{
 		q = n / d;
 		r = n % d;
-	}
-
-	template <class N>
-	typename std::enable_if<std::is_integral<N>::value, int>::type  signbit(N n)
-	{
-		return static_cast<int>(n);
 	}
 
 

@@ -14,7 +14,7 @@
 #include <thread>
 #include "znqueue.h"
 
-char *may_break(void)
+const char *may_break(void)
 {
 	return "!";
 }
@@ -27,7 +27,7 @@ struct safe_cast_imp<D, S, false>
 {
 	static D exec(const S &s)
 	{	// For some reason the const_cast is required...
-		return const_cast<S &>(s).convert_to<D>();
+		return static_cast<D>(s);
 	}
 };
 

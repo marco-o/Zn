@@ -19,10 +19,10 @@
 #include <string>
 
 template <class K, class T>
-class register_t
+class register_entry_t
 {
 public:
-	register_t(const K &k, T t)
+	register_entry_t(const K &k, T t)
 	{
 		entries()[k] = t;
 	}
@@ -53,7 +53,7 @@ struct entry_t
 };
 typedef int(*funct_t)(const param_map_t &);
 
-typedef register_t<std::string, funct_t> register_cmd_t;
+typedef register_entry_t<std::string, funct_t> register_cmd_t;
 
 typedef boost::multiprecision::cpp_int large_int_t;
 
