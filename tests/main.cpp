@@ -18,6 +18,7 @@
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
 #include "znquadratic_residue.h"
+#include "znquadratic_sieve0.h"
 #include "znquadratic_sieve.h"
 
 #ifdef HAVE_BOOST
@@ -26,7 +27,14 @@ using namespace boost::multiprecision;
 
 using namespace zn ;
 
-#ifdef HAVE_BOOST
+
+template <class large_int, class small_int = int>
+void test_quadratic_sieve0(const large_int &n, small_int base_size)
+{
+	auto p1 = quadratic_sieve0(n, base_size);
+	auto p2 = n / p1;
+	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+}
 
 template <class large_int, class small_int = int>
 void test_quadratic_sieve(const large_int &n, small_int base_size)
@@ -35,7 +43,6 @@ void test_quadratic_sieve(const large_int &n, small_int base_size)
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
-#endif
 
 void test_eratosthenes(int bound)
 {
@@ -166,8 +173,12 @@ int main(int argc, char *argv[])
 				base_size = atoi(argv[i] + 12);
 			else if (strncmp(argv[i], "--n=", 4) == 0)
 				n = argv[i] + 4;
+			else if (strcmp(argv[i], "--qs0") == 0)
+				test_quadratic_sieve0<long long, int>(atoll(n), static_cast<int>(base_size));
 			else if (strcmp(argv[i], "--qs") == 0)
 				test_quadratic_sieve<long long, int>(atoll(n), static_cast<int>(base_size));
+			else if (strcmp(argv[i], "--qsc0") == 0)
+				test_quadratic_sieve0<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--qsc") == 0)
 				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
 #ifdef HAVE_GMP

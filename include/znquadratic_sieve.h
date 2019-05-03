@@ -12,68 +12,67 @@
 
 #include <tuple>
 #include <thread>
+#include <vector>
+#include <list>
+#include <map>
 #include "znqueue.h"
-
-char *may_break(void)
-{
-	return "!";
-}
-
-template <class D, class S, bool>
-struct safe_cast_imp {};
-
-template <class D, class S>
-struct safe_cast_imp<D, S, false>
-{
-	static D exec(const S &s)
-	{	// For some reason the const_cast is required...
-		return const_cast<S &>(s).convert_to<D>();
-	}
-};
-
-template <class D, class S>
-struct safe_cast_imp<D, S, true>
-{
-	static D exec(const S &s)
-	{
-		return static_cast<D>(s);
-	}
-};
-
-template <class D, class S>
-D safe_cast(const S &s)
-{
-	return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
-}
-#define ZNASSERT(x) if (!(x)) std::cerr << "Assertion failed: " << #x << may_break() << std::endl ;
-#define DBG_SIEVE_ERROR		1
-#define DBG_SIEVE_WARNINIG  2
-#define DGB_SIEVE_INFO		3
-#define DBG_SIEVE_TRACE		4
-#define DBG_SIEVE_DEBUG		5
-#define DBG_SIEVE			DBG_SIEVE_TRACE
-
 
 namespace zn
 {
+	template <class N>
+	bool divide_qr1(N &n, const N &d)
+	{
+		N r, q;
+		divide_qr(n, d, q, r);
+		if (r == 0)
+		{
+			n = q;
+			return true;
+		}
+		return false;
+	}
+
+	struct system_info_t
+	{
+		static const size_t memory(void)
+		{
+#ifdef _M_X64
+			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
+#else
+			const size_t max_mem = 1 * 512 * 1048576LL; // 0.5GB
+#endif	
+			return max_mem;
+		}
+	};
+
 	template <class large_int, class small_int, class real>
 	class quadratic_sieve_t
 	{
 	public:
-		typedef typename std::make_unsigned<small_int>::type small_uint;
-		typedef std::pair<large_int, small_int> sieve_range_t;
-
-		enum { small_uint_bits = sizeof(small_uint) * 8, max_base_count = 4 };
+		typedef long long long_t;
+		typedef unsigned int slot_t;
+		enum {bits_per_slot = 8 * sizeof(slot_t) };
+		struct sieve_range_t
+		{
+			large_int first; // beginning
+			small_int second; // size
+			// additional info on polynomial, ecc
+			int		dir_sign; // negative grows backwards
+			large_int final_remainder; // value of polinomial at end of range
+			sieve_range_t(const large_int &f = large_int(), const small_int &s = small_int()) : first(f), second(s) {}
+			sieve_range_t &operator++(void)
+			{
+				first += dir_sign * second;
+				return *this;
+			}
+		};
 		struct base_t
 		{
 			small_int	prime;
 			small_int	residue; // quadratic residue
-			int			count ;
-			int			index[max_base_count];
 			real		logp;
 			small_int   prime0;
-
-			base_t(small_int p, small_int r) : 
+			base_t(small_int p, small_int r) :
 				prime(p), residue(r), logp(static_cast<real>(-std::log(p)))
 			{
 				prime0 = prime;
@@ -84,6 +83,7 @@ namespace zn
 				result.residue = prime - residue;
 				return result;
 			}
+			// what about substitute composition with lifting?
 			void compose(const base_t &rhs, const large_int &n)
 			{
 				prime *= rhs.prime;
@@ -91,106 +91,112 @@ namespace zn
 				residue = static_cast<small_int>(quadratic_residue<large_int>(n1, prime, prime / rhs.prime0)); // actually a power of prime
 			}
 		};
-		enum smooth_status_e { smooth_delete_e, smooth_touch_e, smooth_valid_e };
+		struct base_ref_t : public base_t
+		{
+			base_ref_t(small_int p, small_int r) : base_t(p, r) {}
+
+			std::vector<int> smooths; // indexes
+
+		};
+		enum smooth_status_e{ smooth_idle_e, smooth_valid_e, smooth_candidate_e };
 		struct smooth_t
 		{
+			large_int				n; // number squared
+			std::vector<int>		factors;
+			large_int				f; // remainder after trial division
+			large_int				sqr;
+			bool					sign_bit; // true if negative
 			smooth_status_e			s;
-			large_int				n;
-			large_int				r;
-			std::vector<small_uint>	e ;
-			smooth_t(large_int r1, const large_int &n1, const large_int &m, const std::vector<base_t> &base) :
-				r(1), n(n1), e(base.size() / small_uint_bits + 1, 0), s(smooth_valid_e) 
+			smooth_t(void) : n(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
+
+			smooth_t(const large_int &n1, 
+				     const large_int &r1, 
+				     const large_int &m, 
+				     const large_int &thrs, 
+				     const std::vector<base_ref_t> &base) : n(n1), f(r1), sqr(1), sign_bit(false) 
 			{
-				large_int r2, q;
-				small_int base_size = static_cast<small_int>(base.size());
-				for (int j = 0; j < base_size; j++)
+				if (f < 0)
+				{
+					sign_bit = true;
+					f = -f;
+				}
+				size_t base_size = base.size();
+				for (size_t j = 0; j < base_size; j++)
 				{
 					const auto &b = base[j];
 					int rexp = 0;
 					large_int p = b.prime;
-					for (; ;)
-					{
-						divide_qr(r1, p, q, r2);
-						if (r2 == 0)
-						{
-							r1 = q;
-							toggle(j);
-							if (++rexp == 2)
-							{
-								r = (r * b.prime) % m;
-								rexp = 0;
-							}
-						}
-						else
-							break;
-					}
+					int power = 0;
+					while (divide_qr1(f, p))
+						if (++power % 2 == 0)
+							sqr = (sqr * b.prime) % m;
+					if (power & 1)
+						factors.push_back(static_cast<int>(j));
 				}
-				if (r1 != 1)
-					s = smooth_delete_e;
+				if (f == 1)
+					s = smooth_valid_e;
+				else if (f < thrs)
+					s = smooth_candidate_e;
+				else
+					s = smooth_idle_e;
 			}
-			bool valid(void) const { return s != smooth_delete_e; }
-			void toggle(int pos)
+			bool valid(void) const { return s != smooth_idle_e; }
+			large_int result(const large_int &m)
 			{
-				int slot = pos / small_uint_bits;
-				int bit  = pos % small_uint_bits;
-				e[slot] ^= static_cast<small_int>(1) << bit;
+				large_int a = gcd(m, n + sqr);
+				if (a != 1 && a != m)
+					return a;
+				large_int b = (n > sqr ? n - sqr: sqr - n);
+				return gcd(b, m);
 			}
-			void combine(smooth_t &rhs, const large_int &m, const std::vector<base_t> &base)
+			void compose(const smooth_t &rhs, const large_int &m, const std::vector<base_ref_t> &base)
 			{
-				s = smooth_touch_e;
 				n = (n * rhs.n) % m;
-				r = (r * rhs.r) % m;
-				size_t size = e.size();
-				for (size_t i = 0; i < size; i++)
+				sqr = (sqr * rhs.sqr) % m;
+				if (rhs.f == f)
 				{
-					small_uint v = e[i] & rhs.e[i];
-					e[i] ^= rhs.e[i];
-					if (v)
-						for (int b = 0; b < small_uint_bits; b++)
-							if (bit_test(v, b))
-								r = (r * base[i * small_uint_bits + b].prime) % m;
+					sqr = (sqr * f) % m;
+					f = 1;
 				}
-				rhs.s = smooth_delete_e;
-			}
-			// n * n = r * r * odd_factors_of_base
-			bool verify(const large_int &m, const std::vector<base_t> &base)
-			{
-				small_uint v;
-				large_int r1 = r * r % m; 
-				size_t size = e.size();
-				for (size_t i = 0; i < size; i++)
+
+				sign_bit ^= rhs.sign_bit;
+				std::vector<int>		fact;
+				auto it1  = factors.begin();
+				auto end1 = factors.end();
+				auto it2 = rhs.factors.begin();
+				auto end2 = rhs.factors.end();
+				while (it1 != end1 && it2 != end2)
 				{
-					if ((v = e[i]) != 0)
-						for (int b = 0; b < small_uint_bits; b++)
-							if (bit_test(v, b))
-								r1 = (r1 * base[i * small_uint_bits + b].prime) % m;
-				}
-				large_int n1 = (n * n - r1) % m;
-				return n1 == 0;
-			}
-			void remap(const std::vector<int> &index, size_t base_slots)
-			{
-				unsigned int size = static_cast<unsigned int>(e.size());
-				for (unsigned int i = 0; i < size; i++)
-					if (e[i])
+					if (*it1 < *it2)
+						fact.push_back(*it1++);
+					else if (*it1 > *it2)
+						fact.push_back(*it2++);
+					else // same factor; gets skipped!
 					{
-						auto value = e[i];
-						e[i] = 0; // a bit tricky but ok
-						for (unsigned int j = 0; j < small_uint_bits; j++)
-							if (bit_test(value, j))
-							{
-								unsigned int old_pos = i * small_uint_bits + j;
-								unsigned int new_pos = index[old_pos];
-								unsigned int slot = new_pos / small_uint_bits;
-								unsigned int bit = new_pos % small_uint_bits;
-								e[slot] ^= static_cast<small_int>(1) << bit;
-							}
+						sqr = (sqr * base[*it1].prime) % m;
+						++it1;
+						++it2;
 					}
-				e.erase(e.begin() + base_slots, e.end());
+				}
+				if (it1 != end1)
+					fact.insert(fact.end(), it1, end1);
+				if (it2 != end2)
+					fact.insert(fact.end(), it2, end2);
+				factors = fact;
 				s = smooth_valid_e;
+			}
+			bool invariant(const large_int &m, const std::vector<base_ref_t> &base) const
+			{
+				large_int s1 = (sqr * sqr * f) % m ;
+				for (auto idx : factors)
+					s1 = (s1 * base[idx].prime) % m;
+				s1 = (s1 - n * n) % m;
+				return s1 == 0;
 			}
 		};
 		typedef std::vector<smooth_t> smooth_vect_t;
+		typedef std::map<large_int, smooth_t> candidates_map_t;
+
 		quadratic_sieve_t(const large_int &n, small_int base_size) : n_(n)
 		{
 			// double the range; half of them won't be a quadratic residue
@@ -201,168 +207,132 @@ namespace zn
 			{
 				small_int n1 = safe_cast<small_int>(n % p);
 				if ((r = quadratic_residue(n1, p)) != 0)
-					base_.push_back(base_t(p, r));
+					base_.push_back(base_ref_t(p, r));
 			}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Actual base size: " << base_.size() << ", largest = " << base_.rbegin()->prime << std::endl;
 #endif // DBG_SIEVE	
-			sieve_thrs_ = safe_cast<real>(std::log(*primes.rbegin())) / 2;
+			sieve_thrs_ = safe_cast<real>(std::log(*primes.rbegin()) * 1.8);
+			smooth_thrs_ = base_.rbegin()->prime;
+			smooth_thrs_ *= smooth_thrs_;
 		}
 		large_int sieve(void)
 		{
 			sieve_range_t range;
 			range.first = safe_cast<large_int>(sqrt(n_) + 1);
 			range.second = static_cast<small_int>(std::pow(base_.size(), 2.5));
-#ifdef _M_X64
-			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
-#else
-			const size_t max_mem = 1 * 512 * 1048576LL; // 1GB
-#endif
-			auto cores = std::thread::hardware_concurrency();
+			const size_t max_mem = system_info_t::memory();
+			auto cores = 1; // std::thread::hardware_concurrency();
 			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
-#if 0
+
 			smooth_vect_t smooths;
-			while (smooths.size() < base_.size())
+			candidates_map_t candidates;
+			for ( ; smooths.size() < base_.size() ; ++range)
 			{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				std::cout << "Sieving " << range.first 
 					      << " , " << range.second << "(" << smooths.size() << " )\r" << std::flush;
 #endif
 				auto smooth = sieve_range(range);
-				smooths.insert(smooths.end(), smooth.begin(), smooth.end());
-				range = next_range(range);
-			}
-#else
-			for (size_t i = 0 ; i < cores ; i++)
-			{
-				threads_.emplace_back(&quadratic_sieve_t::sieving_thread, this);
-				ranges_to_sieve_.push(range);
-				range = next_range(range);
-			}
-			int count = 0;
-			smooth_vect_t smooths;
-			while (smooths.size() < base_.size())
-			{
-				auto smooth = smooths_found_.pop();
-				smooths.insert(smooths.end(), smooth.begin(), smooth.end());
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-				std::cout << "Found = " << smooths.size() << " smooths (" << count++ << ")\r" << std::flush;
-#endif
-				ranges_to_sieve_.push(range);
-				range = next_range(range);
-			}
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "\nFound = " << smooths.size() << " smooths, base = " << base_.size() << std::endl;
-#endif			// stop sieving threads
-			range.second = 0;
-			ranges_to_sieve_.clear();
-			for (size_t i = 0; i < cores; i++)
-				ranges_to_sieve_.push(range);
-			for (auto &thread : threads_)
-				thread.join();
-			// pick remaining smooths
-			while (!smooths_found_.empty())
-			{
-				auto smooth = smooths_found_.pop();
-				smooths.insert(smooths.end(), smooth.begin(), smooth.end());
-			}
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Found = " << smooths.size() << " smooths" << std::endl;
-#endif
-#endif
-			for (; ;)
-			{
-				auto eraseable = compact_base(smooths);
-				for (int count = 2; count <= max_base_count; count++)
-					eraseable += simplyfy_cycles(smooths, count);
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-				std::cout << "Reduced base size = " << base_.size() - eraseable << std::endl;
-#endif
-				if (eraseable > 0)
-					compact(smooths);
-				else
-					break;
-			}
-			if (smooths.size() >= base_.size())
-			{
-				size_t required = base_.size() + base_.size() / 10 + 10;
-				if (required < smooths.size())
-					smooths.erase(smooths.begin() + required, smooths.end());
-				return solve(smooths);
-			}
-			else
-			{
-#if DBG_SIEVE >= DBG_SIEVE_WARNING
-				std::cout << "Not enough smooths = " << smooths.size() << " < " << base_.size() << std::endl;
-#endif			
-				return 1;
-			}
-		}
-	private:
-		sieve_range_t next_range(const sieve_range_t &r)
-		{
-			sieve_range_t result(r);
-			result.first += result.second;
-			return result;
-		}
-		large_int solve(std::vector<smooth_t> &smooths)
-		{
-			unsigned int base_size = static_cast<unsigned int>(base_.size()) ;
-			unsigned int smooth_size = static_cast<unsigned int>(smooths.size());
-			unsigned int key_col = base_size + 1;
-			unsigned int slot = key_col / small_uint_bits;
-			unsigned int bit = key_col % small_uint_bits;
-	/*		small_uint bitp = 1 << bit;
-			for (auto &smooth : smooths)
-				smooth.e[slot] |= bitp;*/
-			// std gaussian elimination
-			for (unsigned int i = 0; i < base_size; i++)
-			{
-				// search pivot
-				slot = i / small_uint_bits;
-				bit  = i % small_uint_bits;
-				for (size_t j = i ; j < smooth_size ; j++)
-					if (bit_test(smooths[j].e[slot], bit))
-					{
-						std::swap(smooths[j], smooths[i]);
-						break;
-					}
-				if (!bit_test(smooths[i].e[slot], bit)) // not found
+				for (auto &s : smooth)
 				{
-					base_[i].count = 0;
-					continue;
-				}
-				smooth_t &smooth = smooths[i];
-				for (size_t j = i + 1; j < smooth_size; j++)
-					if (bit_test(smooths[j].e[slot], bit))
+					if (s.s == smooth_candidate_e)
 					{
-						smooths[j].combine(smooth, n_, base_);
+						auto it = candidates.find(s.f);
+						if (it != candidates.end())
+						{
+							s.compose(it->second, n_, base_);
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
-						smooths[j].verify(n_, base_);
-#endif
+							if (!s.invariant(n_, base_))
+								std::cout << "Hmmm";
+#endif // DBG_SIEVE	
+						}
+						else // just put it aside
+						{
+							candidates[s.f] = s;
+							continue;
+						}
 					}
+					int si = static_cast<int>(smooths.size());
+					for (auto f : s.factors)
+						base_[f].smooths.push_back(si);
+					smooths.push_back(s);
+				}
 			}
-			for (size_t i = base_size; i < smooth_size; i++)
+			auto result = solve(smooths);
+			for (auto &item : result)
 			{
-				large_int a = smooths[i].n;
-				large_int b = smooths[i].r;
-#if DBG_SIEVE >= DBG_SIEVE_TRACE
-				if (a < b)
-					std::swap(a, b);
-				std::cout << "Testing a = " << a << ", b = " << b 
-					      << " ( " << ((a * a - b * b) % n_) << ")" << std::endl;
-#endif
-				large_int p1 = gcd(a + b, n_);
-				if (p1 != 1 && p1 != n_)
-					return p1;
-				if (a < b)
-					p1 = gcd(b - a, n_);
-				else
-					p1 = gcd(a - b, n_);
-				if (p1 != 1 && p1 != n_)
-					return p1;
+				smooth_t s;
+				for (auto index : item)
+					s.compose(smooths[index], n_, base_);
+				large_int r = s.result(n_);
+				if (r != 1 && r != n_)
+					return r;
 			}
 			return 1;
+		}
+	private:
+		// linear system: rows is #base_, cols is number of smooths
+		std::vector<std::vector<int>> solve(std::vector<smooth_t> &smooths)
+		{
+			size_t smooth_size = smooths.size();
+			size_t base_size = base_.size() ;
+			size_t slots = (smooth_size + bits_per_slot - 1) / bits_per_slot;
+			std::vector<std::vector<slot_t>> matrix(base_size, std::vector<slot_t>(slots, 0));
+			for (size_t i = 0 ; i < smooth_size; i++)
+			{
+				const smooth_t &smooth = smooths[i];
+				slot_t slot = static_cast<slot_t>(i / bits_per_slot);
+				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
+				if (smooth.sign_bit)
+					matrix[0][slot] |= mask;
+				for (auto idx : smooth.factors)
+					matrix[idx + 1][slot] |= mask;
+			}
+			std::vector<int> base_perm(base_size);
+			for (size_t i = 0; i < base_size; i++)
+				base_perm[i] = i;
+			for (size_t i = 0; i < base_size; i++)
+			{
+				size_t j;
+				slot_t slot = i / bits_per_slot;
+				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
+				for (j = i ; j < base_size ; j++) // pivoting
+					if (matrix[i][slot] & mask)
+					{
+						if (i != j)
+							std::swap(base_perm[i], base_perm[j]);
+						break;
+					}
+				if (j == base_size)
+					continue; // nothing to do...
+				auto &v = matrix[i];
+				for (j = i + 1; j < base_size; j++)
+					for (size_t k = slot; k < slots; k++)
+						matrix[j][k] ^= v[k];
+
+			}
+			std::vector<std::vector<int>> result;
+			for (size_t i = base_size; i < smooth_size; i++)
+			{
+				std::vector<int> idx;
+				slot_t slot = i / bits_per_slot;
+				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
+
+				for (size_t j = 0; j < base_size; j++)
+					if (matrix[j][slot] & mask)
+						idx.push_back(base_perm[j]);
+				idx.push_back(i);
+				result.push_back(idx);
+				if (result.size() > 30)
+					break;
+			}
+			return result;
+		}
+		bool bit_test(const std::vector<slot_t> &v, size_t index)
+		{
+			size_t slot = i / bits_per_slot;
+			return (v[slot] & (1 << static_cast<slot_t>(i % bits_per_slot))) != 0;
 		}
 		std::vector<smooth_t> collect_smooth(const sieve_range_t &range,
 											 const std::vector<real> &values)
@@ -373,12 +343,13 @@ namespace zn
 				{
 					large_int n = range.first + i;
 					large_int r = n * n - n_;
-					smooth_t s(r, n, n_, base_);
+					smooth_t s(n, r, n_, smooth_thrs_, base_);
 					if (s.valid())
 					{
 						smooths.push_back(s);
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-						s.verify(n_, base_);
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+						if (!s.invariant(n_, base_))
+							std::cout << "Hmm";
 #endif
 					}
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
@@ -498,105 +469,6 @@ namespace zn
 			}
 		}
 		// removes element that appears only once
-		size_t compact_base(std::vector<smooth_t> &smooths)
-		{
-			for (auto &base : base_)
-				base.count = 0;
-
-			size_t smooth_count = smooths.size();
-			for (unsigned int k = 0 ; k < smooth_count ; k++)
-			{
-				const auto &smooth = smooths[k];
-				size_t slots = smooth.e.size();
-				for (unsigned int i = 0 ; i < slots ; i++)
-					if (smooth.e[i])
-					{
-						auto slot = smooth.e[i];
-						for (unsigned int j = 0; j < small_uint_bits; j++)
-							if (bit_test(slot, j))
-							{
-								auto &base = base_[i * small_uint_bits + j];
-								if (base.count < max_base_count)
-									base.index[base.count] = k;
-								base.count++;
-							}
-					}
-			}
-			// mark smooth numbers to remove
-			size_t result = 0;
-			for (auto &base : base_)
-				if (base.count < 2)
-				{
-					if (base.count == 1)
-						smooths[base.index[0]].s = smooth_delete_e;
-					base.count = 0; // mark removed
-					result++;
-				}
-			return result;
-		}
-		size_t simplyfy_cycles(std::vector<smooth_t> &smooths, int cycle_size)
-		{
-			size_t result = 0;
-			auto rend = base_.rend();
-			for (auto rit = base_.rbegin(); rit != rend; ++rit)
-				if (rit->count == cycle_size)
-				{
-					int unusable = rit->count;
-					for (int i = 0; i < rit->count; i++)
-						if (smooths[rit->index[i]].s == smooth_valid_e)
-							unusable--;
-
-					if (unusable > 0)
-						continue;
-
-					result++;
-					smooth_t &pivot = smooths[rit->index[0]];
-					for (int i = 1; i < rit->count; i++)
-						smooths[rit->index[i]].combine(pivot, n_, base_);
-					rit->count = 0; // base element removeable
-				}
-			return result;
-		}
-		void compact(std::vector<smooth_t> &smooths)
-		{
-			// TODO smooth indexes could be remapped, not rebuilt
-			// but the base.index has to be rebuilt anyway 
-			// since new base element could drop in max_base_count range
-#if 0
-			std::vector<int> smooth_indexes;
-			size_t smooths_size = smooths_.size();
-			int smooth_index = 0;
-			for (size_t i = 0; i < smooths_size; i++)
-			{
-				smooth_indexes.push_back(smooth_index);
-				smooth_index += (smooths_[i].s != smooth_delete_e);
-			}
-#endif
-			auto smooth_end = std::remove_if(smooths.begin(), smooths.end(), [](const smooth_t &smooth)
-			{ return smooth.s == smooth_delete_e; });
-			smooths.erase(smooth_end, smooths.end());
-
-			std::vector<int> base_indexes;
-			size_t base_size = base_.size();
-			int base_index = 0;
-			for (size_t i = 0; i < base_size; i++)
-			{
-				base_indexes.push_back(base_index);
-				base_index += (base_[i].count > 1);
-			}
-			auto new_end = std::remove_if(base_.begin(), base_.end(), [](const base_t &base)
-			{ return base.count < 2; });
-			base_.erase(new_end, base_.end());
-
-			// now rebuild smooth indexes
-			size_t base_slots = base_.size() / small_uint_bits + 1; // leave 1 extrta bit
-			for (auto &smooth : smooths)
-				smooth.remap(base_indexes, base_slots);
-#if 0
-			for (auto &base : base_)
-				base.remap(smooth_indexes);
-#endif
-		}
 		void sieving_thread(void)
 		{
 			try
@@ -623,14 +495,13 @@ namespace zn
 			return static_cast<small_int>(result);
 		}
 		real				sieve_thrs_;
+		large_int			smooth_thrs_; // square of last element of base
 		large_int			n_;
-		std::vector<base_t> base_;
+		std::vector<base_ref_t>		 base_;
 		shared_list_t<sieve_range_t> ranges_to_sieve_;
 		shared_list_t<smooth_vect_t> smooths_found_;
 		std::vector<std::thread>	 threads_;
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-		std::vector<large_int> ns_;
-#endif
+
 	};
 
 

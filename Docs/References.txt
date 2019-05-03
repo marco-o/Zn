@@ -4,6 +4,16 @@ Quadratic sieve:
 Gaussian elimination in GF(2)
 	https://www.cs.umd.edu/~gasarch/TOPICS/factoring/fastgauss.pdf
 
+Got mipr from https://github.com/Legrandin/mpir-windows-builds
+
 Build command: something like
 cmake .. -DBOOST_ROOT=/c/Users/marco.oman/Documents/boost_1_70_0/ \
          -DGMP_ROOT=/C/Users/marco.oman/Documents/git/mpir/lib/Win32/Release
+
+Some tests:
+time ./main --n=13090163955597839265304386635828428567856324123 --base-size=3200 --qsc
+107355708017137734566479 * 121932631225422966763637 = 13090163955597839265304386635828428567856324123
+
+real    2m58.117s
+user    0m0.000s
+sys     0m0.047s

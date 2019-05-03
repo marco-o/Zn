@@ -4,7 +4,8 @@
 
 set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h 
                   ../include/zneratosthenes_sieve.h ../include/znquadratic_residue.h
-				  ../include/znquadratic_sieve.h ../include/znqueue.h)
+				  ../include/znquadratic_sieve0.h ../include/znquadratic_sieve.h
+				  ../include/znqueue.h)
 include_directories(../include)
 
 if (WIN32)
