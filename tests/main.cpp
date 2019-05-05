@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 	long long b = 7 ;
 	long long m = 19 ;
 	long long ps = 1;
-	long long base_size = 5;
+	long long base_size = 0;
 #ifdef HAVE_BOOST
 	const char *n = "29";
 	const char *a1 = "2";

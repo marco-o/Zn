@@ -195,7 +195,16 @@ namespace zn
 		quadratic_sieve_t(const large_int &n, small_int base_size) : n_(n)
 		{
 			// double the range; half of them won't be a quadratic residue
-			small_int range = primes_range(base_size * 2);
+			small_int range;
+			if (base_size != 0)
+				range = primes_range(base_size * 2);
+			else
+			{
+				double n1 = safe_cast<double>(n);
+				double e1 = std::log(n1);
+				double e2 = std::sqrt(e1 * std::log(e1)) / 2;
+				range = static_cast<small_int>(std::exp(e2));
+			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
 			small_int r;
 			for (auto p : primes)
@@ -222,43 +231,52 @@ namespace zn
 			range.second = static_cast<small_int>(std::pow(base_.size(), 2.6));
 			range.dir_sign = 1;
 			const size_t max_mem = system_info_t::memory();
+
+			int count = 0;
+			smooth_vect_t smooths;
+#define HAVE_THREADING
+			candidates_map_t candidates;
+#ifdef HAVE_THREADING
+			auto cores = std::thread::hardware_concurrency();
+			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
+			for (size_t i = 0; i < cores; i++, ++range)
+			{
+				threads_.emplace_back(&quadratic_sieve_t::sieving_thread, this);
+				ranges_to_sieve_.push(range);
+			}
+#else
 			auto cores = 1; // std::thread::hardware_concurrency();
 			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
-
-			smooth_vect_t smooths;
-			candidates_map_t candidates;
-			for ( ; smooths.size() < base_.size() + 2 ; ++range)
-			{
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-				std::cout << "Sieving " << range.first 
-					      << " , " << range.second << "(" << smooths.size() << " )\r" << std::flush;
 #endif
-				auto smooth = sieve_range(range);
-				for (auto &s : smooth)
-				{
-					if (s.candidate())
-					{
-						auto it = candidates.find(s.reminder());
-						if (it != candidates.end())
-						{
-							s.compose(it->second, n_, base_);
-#if DBG_SIEVE >= DBG_SIEVE_ERROR
-							if (!s.invariant(n_, base_))
-								std::cout << "Hmmm";
-#endif // DBG_SIEVE	
-						}
-						else // just put it aside
-						{
-							candidates[s.reminder()] = s;
-							continue;
-						}
-					}
-					int si = static_cast<int>(smooths.size());
-					for (auto f : s.factors())
-						base_[f].smooths.push_back(si);
-					smooths.push_back(s);
-				}
+			for ( ; smooths.size() < base_.size() ; ++range)
+			{
+#ifdef HAVE_THREADING
+				auto chunk = smooths_found_.pop();
+#else
+				auto chunk = sieve_range(range);
+#endif
+				process_candidate_chunk(candidates, chunk, smooths);
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+				std::cout << "Found = " << smooths.size() << " smooths (" << count++ << ")\r" << std::flush;
+#endif
+#ifdef HAVE_THREADING
+				ranges_to_sieve_.push(range);
+#endif
 			}
+#ifdef HAVE_THREADING
+			range.second = 0;
+			ranges_to_sieve_.clear();
+			for (size_t i = 0; i < cores; i++)
+				ranges_to_sieve_.push(range);
+			for (auto &thread : threads_)
+				thread.join();
+			// pick remaining smooths
+			while (!smooths_found_.empty())
+			{
+				auto chunk = smooths_found_.pop();
+				process_candidate_chunk(candidates, chunk, smooths);
+			}
+#endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "\nFound " << smooths.size() << std::endl;
 #endif
@@ -284,6 +302,35 @@ namespace zn
 			return 1;
 		}
 	private:
+		void process_candidate_chunk(candidates_map_t &candidates,
+									 std::vector<smooth_t> &chunk,
+									 std::vector<smooth_t> &smooths)
+		{
+			for (auto &s : chunk)
+			{
+				if (s.candidate())
+				{
+					auto it = candidates.find(s.reminder());
+					if (it != candidates.end())
+					{
+						s.compose(it->second, n_, base_);
+#if DBG_SIEVE >= DBG_SIEVE_ERROR
+						if (!s.invariant(n_, base_))
+							std::cout << "Hmmm";
+#endif // DBG_SIEVE	
+					}
+					else // just put it aside
+					{
+						candidates[s.reminder()] = s;
+						continue;
+					}
+				}
+				int si = static_cast<int>(smooths.size());
+				for (auto f : s.factors())
+					base_[f].smooths.push_back(si);
+				smooths.push_back(s);
+			}
+		}
 		void erase_base(base_ref_t &base, std::vector<smooth_t> &smooths)
 		{
 			size_t count = base.smooths.size();
@@ -321,7 +368,7 @@ namespace zn
 			}
 			base_.erase(base_.begin() + base_map, base_.end());
 			// compact smooths
-			int smooths_size = smooths.size();
+			int smooths_size = static_cast<int>(smooths.size());
 			int smooths_map = 0;
 			for (int i = 0; i < smooths_size; i++)
 			{
@@ -445,8 +492,8 @@ namespace zn
 #endif
 			std::vector<int> smooth_perm(smooth_size);
 			for (size_t i = 0; i < smooth_size; i++)
-				smooth_perm[i] = i;
-			size_t i = 0; // actual row used as pivot
+				smooth_perm[i] = static_cast<int>(i);
+			int i = 0; // actual row used as pivot
 			std::vector<int> rows;
 			std::vector<int> rows_idx;
 			for (size_t k = 0; k < base_size; k++)
@@ -456,10 +503,10 @@ namespace zn
 				std::cout << "\nPass " << i << " out of " << base_size << "\n";
 				trace_matrix(matrix, smooth_size);
 #endif
-				int	   slot = static_cast<int>(i / bits_per_slot);
+				int	   slot = i / bits_per_slot;
 				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
 				auto &v = matrix[k];
-				int j = find_nonzero(v, smooth_size, i);
+				int j = find_nonzero(v, static_cast<int>(smooth_size), i);
 				if (j < 0)
 					continue;
 				if (j != i)
@@ -470,7 +517,7 @@ namespace zn
 					std::cout << "Swap columns " << i << ", " << j << std::endl;
 #endif
 				}
-				for (j = k + 1; j < static_cast<int>(base_size); j++)
+				for (j = static_cast<int>(k + 1); j < static_cast<int>(base_size); j++)
 					if (matrix[j][slot] & mask)
 						for (size_t h = slot; h < slots; h++)
 							matrix[j][h] ^= v[h];
@@ -507,7 +554,7 @@ namespace zn
 			for (size_t i = rows_size; i < smooth_size; i++)
 			{
 				std::vector<int> idx;
-				slot_t slot = i / bits_per_slot;
+				slot_t slot = static_cast<slot_t>(i / bits_per_slot);
 				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
 
 				for (size_t j = 0; j < base_size; j++)
