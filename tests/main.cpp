@@ -176,7 +176,7 @@ int main(int argc, char *argv[])
 			else if (strcmp(argv[i], "--qs0") == 0)
 				test_quadratic_sieve0<long long, int>(atoll(n), static_cast<int>(base_size));
 			else if (strcmp(argv[i], "--qs") == 0)
-				test_quadratic_sieve<long long, int>(atoll(n), static_cast<int>(base_size));
+				test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
 			else if (strcmp(argv[i], "--qsc0") == 0)
 				test_quadratic_sieve0<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--qsc") == 0)

@@ -57,13 +57,10 @@ typedef register_t<std::string, funct_t> register_cmd_t;
 
 typedef boost::multiprecision::cpp_int large_int_t;
 
+
 template <class Int>
-Int find_next_prime(const param_map_t &params)
+Int find_next_prime(Int n)
 {
-	auto it = params.find("n");
-	if (it == params.end())
-		throw std::runtime_error("Missing parameter n");
-	Int n(it->second);
 	if (n == 2)
 		return n;
 	if (!bit_test(n, 0))
@@ -75,6 +72,16 @@ Int find_next_prime(const param_map_t &params)
 }
 
 template <class Int>
+Int find_next_prime(const param_map_t &params)
+{
+	auto it = params.find("n");
+	if (it == params.end())
+		throw std::runtime_error("Missing parameter n");
+	Int n(it->second);
+	return find_next_prime(n);
+}
+
+template <class Int>
 int print_next_prime(const param_map_t &params)
 {
 	auto result = find_next_prime<Int>(params);
@@ -82,7 +89,36 @@ int print_next_prime(const param_map_t &params)
 	return 0;
 }
 
+template <class Int>
+Int random_number(int dgt)
+{
+	std::string text;
+	for (int i = 0; i < dgt; i++)
+		text.push_back('0' + std::rand() % 10);
+	return Int(text);
+}
+
+
+template <class Int>
+int find_large_composite(const param_map_t &params)
+{
+	auto it = params.find("dgt");
+	if (it == params.end())
+		throw std::runtime_error("Missing parameter dgt (digits)");
+	auto seed = params.find("seed");
+	if (seed != params.end())
+		std::srand(atoi(seed->second.c_str()));
+	int digits = atoi(it->second.c_str());
+	Int p1 = find_next_prime<Int>(random_number<Int>(digits));
+	Int p2 = find_next_prime<Int>(random_number<Int>(digits));
+	std::cout << (p1 * p2) << " = " << p1 << " * " << p2 << std::endl;
+
+	return 0;
+}
+
+
 register_cmd_t next_prime(std::string("next-prime"), print_next_prime<large_int_t>);
+register_cmd_t large_composite(std::string("large-composite"), find_large_composite<large_int_t>);
 
 int main(int argc, char *argv[])
 {

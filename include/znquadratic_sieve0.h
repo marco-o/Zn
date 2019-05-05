@@ -51,7 +51,11 @@ D safe_cast(const S &s)
 #define DGB_SIEVE_INFO		3
 #define DBG_SIEVE_TRACE		4
 #define DBG_SIEVE_DEBUG		5
+#ifdef _DEBUG
 #define DBG_SIEVE			DBG_SIEVE_TRACE
+#else
+#define DBG_SIEVE			DBG_SIEVE_INFO
+#endif
 
 
 namespace zn

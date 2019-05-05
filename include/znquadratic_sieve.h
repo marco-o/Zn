@@ -212,12 +212,14 @@ namespace zn
 				if ((r = quadratic_residue(n1, p)) != 0)
 					base_.push_back(base_ref_t(p, r));
 			}
+#ifdef _DEBUG
 			if (static_cast<small_int>(base_.size()) > base_size)
 				base_.erase(base_.begin() + static_cast<int>(base_size), base_.end());
+#endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Actual base size: " << base_.size() << ", largest = " << base_.rbegin()->prime << std::endl;
 #endif // DBG_SIEVE	
-			sieve_thrs_ = safe_cast<real>(std::log(*primes.rbegin()) * 1.2);
+			sieve_thrs_ = safe_cast<real>(std::log(*primes.rbegin()) * 2);
 			smooth_thrs_ = base_.rbegin()->prime;
 			smooth_thrs_ *= smooth_thrs_;
 		}
@@ -237,7 +239,7 @@ namespace zn
 			{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				std::cout << "Sieving " << range.first 
-					      << " , " << range.second << "(" << smooths.size() << " )\n" << std::flush;
+					      << " , " << range.second << "(" << smooths.size() << " )\r" << std::flush;
 #endif
 				auto smooth = sieve_range(range);
 				for (auto &s : smooth)
@@ -248,7 +250,7 @@ namespace zn
 						if (it != candidates.end())
 						{
 							s.compose(it->second, n_, base_);
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+#if DBG_SIEVE >= DBG_SIEVE_ERROR
 							if (!s.invariant(n_, base_))
 								std::cout << "Hmmm";
 #endif // DBG_SIEVE	
@@ -265,15 +267,28 @@ namespace zn
 					smooths.push_back(s);
 				}
 			}
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			std::cout << "\nFound " << smooths.size() << std::endl;
+			if (smooths.size() > base_.size() * 9 / 8)
+				smooths.erase(smooths.begin() + base_.size() * 9 / 8, smooths.end());
+#endif
 			auto result = solve(smooths);
 			for (auto &item : result)
 			{
 				smooth_t s;
 				for (auto index : item)
 					s.compose(smooths[index], n_, base_);
+#if DBG_SIEVE >= DBG_SIEVE_WARNING
+				if (s.factors.size() > 0)
+					std::cout << "Non null factors!\n";
+#endif // DBG_SIEVE	
 				large_int r = s.result(n_);
 				if (r != 1 && r != n_)
 					return r;
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+				else
+					std::cout << "Attempt failed\n";
+#endif // DBG_SIEVE	
 			}
 			return 1;
 		}
@@ -283,7 +298,7 @@ namespace zn
 			int slot = static_cast<int>(i / bits_per_slot);
 			int j = static_cast<int>(i % bits_per_slot);
 			slot_t mask = 1 << j;
-			for (i = slot * bits_per_slot ; i < size; i += bits_per_slot)
+			for (i = slot * bits_per_slot ; i < size; i += bits_per_slot, slot++)
 			{
 				slot_t s = v[slot];
 				if (s)
@@ -322,21 +337,35 @@ namespace zn
 				int delta = dj - di;
 				const slot_t maskni = ~maski;
 				const slot_t masknj = ~maskj;
-				for (size_t k = 0; k < size; k++)
+				if (delta > 0)
+					for (size_t k = 0; k < size; k++)
+					{
+						slot_t &xi = matrix[k][sloti];
+						slot_t &xj = matrix[k][slotj];
+						slot_t mi = (xi & maski) << delta;
+						slot_t mj = (xj & maskj) >> delta;
+						xi = (xi &maskni) | mj;
+						xj = (xj &masknj) | mi;
+					}
+				else
 				{
-					slot_t &xi = matrix[k][sloti];
-					slot_t &xj = matrix[k][slotj];
-					slot_t mi = (xi & maski) << delta;
-					slot_t mj = (xj & maskj) >> delta;
-					xi = (xi &maskni) | mj;
-					xj = (xj &masknj) | mi;
+					delta = -delta;
+					for (size_t k = 0; k < size; k++)
+					{
+						slot_t &xi = matrix[k][sloti];
+						slot_t &xj = matrix[k][slotj];
+						slot_t mi = (xi & maski) >> delta;
+						slot_t mj = (xj & maskj) << delta;
+						xi = (xi &maskni) | mj;
+						xj = (xj &masknj) | mi;
+					}
 				}
 			}
 		}
 		void trace_matrix(const std::vector<std::vector<slot_t>> &m, size_t hsize)
 		{
 			int lcount = 0;
-			if (hsize > 40)
+			if (hsize > 80)
 				return;
 			for (auto &v : m)
 			{
@@ -365,8 +394,10 @@ namespace zn
 				for (auto idx : smooth.factors)
 					matrix[idx][slot] |= mask;
 			}
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
 			std::cout << "Initial status\n";
 			trace_matrix(matrix, smooth_size);
+#endif
 			std::vector<int> smooth_perm(smooth_size);
 			for (size_t i = 0; i < smooth_size; i++)
 				smooth_perm[i] = i;
@@ -376,8 +407,10 @@ namespace zn
 			for (size_t k = 0; k < base_size; k++)
 			{
 				rows_idx.push_back(static_cast<int>(i));
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
 				std::cout << "\nPass " << i << " out of " << base_size << "\n";
 				trace_matrix(matrix, smooth_size);
+#endif
 				int	   slot = static_cast<int>(i / bits_per_slot);
 				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
 				auto &v = matrix[k];
@@ -388,7 +421,9 @@ namespace zn
 				{
 					swap_bit(matrix, i, j);
 					std::swap(smooth_perm[i], smooth_perm[j]);
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
 					std::cout << "Swap columns " << i << ", " << j << std::endl;
+#endif
 				}
 				for (j = k + 1; j < static_cast<int>(base_size); j++)
 					if (matrix[j][slot] & mask)
@@ -398,14 +433,14 @@ namespace zn
 				i++;
 			}
 			// backsubstitution
-			std::cout << "Backsubst\n";
 			size_t rows_size = rows.size();
 			for (size_t c = rows_size - 1; c > 0; c--) // indexing on column, which is != from row, i.e. 'i'
 			{
 				int i = rows[c];
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
 				std::cout << "\nBack " << i << " out of " << base_size << "\n";
 				trace_matrix(matrix, smooth_size);
-
+#endif
 				auto &v = matrix[i];
 				int	   slot = static_cast<int>(c / bits_per_slot);
 				slot_t mask = 1 << static_cast<slot_t>(c % bits_per_slot);
@@ -420,8 +455,10 @@ namespace zn
 			}
 			
 			std::vector<std::vector<int>> result;
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
 			std::cout << "Result:\n";
 			trace_matrix(matrix, smooth_size);
+#endif
 			for (size_t i = rows_size; i < smooth_size; i++)
 			{
 				std::vector<int> idx;
@@ -461,10 +498,6 @@ namespace zn
 							std::cout << "Hmm";
 #endif
 					}
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-					else
-						std::cout << (range.first + i) << ", " << values[i] << std::endl;
-#endif
 				}
 			return smooths;
 		}
@@ -542,9 +575,6 @@ namespace zn
 			for (small_int i = 0; i < range.second; i++)
 			{
 				values.push_back(std::log(safe_cast<real>(n2)));
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-				ns_.push_back(n2);
-#endif
 				n2 += n1 * 2 + 1;
 				n1++;
 			}
