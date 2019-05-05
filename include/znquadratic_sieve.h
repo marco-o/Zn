@@ -19,32 +19,6 @@
 
 namespace zn
 {
-	template <class N>
-	bool divide_qr1(N &n, const N &d)
-	{
-		N r, q;
-		divide_qr(n, d, q, r);
-		if (r == 0)
-		{
-			n = q;
-			return true;
-		}
-		return false;
-	}
-
-	struct system_info_t
-	{
-		static const size_t memory(void)
-		{
-#ifdef _M_X64
-			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
-#else
-			const size_t max_mem = 1 * 512 * 1048576LL; // 0.5GB
-#endif	
-			return max_mem;
-		}
-	};
-
 	template <class large_int, class small_int, class real>
 	class quadratic_sieve_t
 	{

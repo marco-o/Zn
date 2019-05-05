@@ -14,49 +14,6 @@
 #include <thread>
 #include "znqueue.h"
 
-char *may_break(void)
-{
-	return "!";
-}
-
-template <class D, class S, bool>
-struct safe_cast_imp {};
-
-template <class D, class S>
-struct safe_cast_imp<D, S, false>
-{
-	static D exec(const S &s)
-	{	// For some reason the const_cast is required...
-		return const_cast<S &>(s).convert_to<D>();
-	}
-};
-
-template <class D, class S>
-struct safe_cast_imp<D, S, true>
-{
-	static D exec(const S &s)
-	{
-		return static_cast<D>(s);
-	}
-};
-
-template <class D, class S>
-D safe_cast(const S &s)
-{
-	return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
-}
-#define ZNASSERT(x) if (!(x)) std::cerr << "Assertion failed: " << #x << may_break() << std::endl ;
-#define DBG_SIEVE_ERROR		1
-#define DBG_SIEVE_WARNINIG  2
-#define DGB_SIEVE_INFO		3
-#define DBG_SIEVE_TRACE		4
-#define DBG_SIEVE_DEBUG		5
-#ifdef _DEBUG
-#define DBG_SIEVE			DBG_SIEVE_TRACE
-#else
-#define DBG_SIEVE			DBG_SIEVE_INFO
-#endif
-
 
 namespace zn
 {

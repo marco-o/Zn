@@ -14,8 +14,80 @@
 #include <sstream>
 
 
+char *may_break(void)
+{
+	return "!";
+}
+
+
+#define ZNASSERT(x) if (!(x)) std::cerr << "Assertion failed: " << #x << may_break() << std::endl ;
+#define DBG_SIEVE_ERROR		1
+#define DBG_SIEVE_WARNINIG  2
+#define DGB_SIEVE_INFO		3
+#define DBG_SIEVE_TRACE		4
+#define DBG_SIEVE_DEBUG		5
+#ifdef _DEBUG
+#define DBG_SIEVE			DBG_SIEVE_TRACE
+#else
+#define DBG_SIEVE			DBG_SIEVE_INFO
+#endif
+
 namespace zn
 {
+	template <class D, class S, bool>
+	struct safe_cast_imp {};
+
+	template <class D, class S>
+	struct safe_cast_imp<D, S, false>
+	{
+		static D exec(const S &s)
+		{	// For some reason the const_cast is required...
+			return const_cast<S &>(s).convert_to<D>();
+		}
+	};
+
+	template <class D, class S>
+	struct safe_cast_imp<D, S, true>
+	{
+		static D exec(const S &s)
+		{
+			return static_cast<D>(s);
+		}
+	};
+
+	template <class D, class S>
+	D safe_cast(const S &s)
+	{
+		return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
+	}
+
+	template <class N>
+	bool divide_qr1(N &n, const N &d)
+	{
+		N r, q;
+		divide_qr(n, d, q, r);
+		if (r == 0)
+		{
+			n = q;
+			return true;
+		}
+		return false;
+	}
+
+	struct system_info_t
+	{
+		static const size_t memory(void)
+		{
+#if !defined(_MSC_VER) || defined(_M_X64)
+			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
+#else		// that's just for 32 bits on Windows
+			const size_t max_mem = 1 * 512 * 1048576LL; // 0.5GB
+#endif	
+			return max_mem;
+		}
+	};
+
+
     template <class T>
     class not_relatively_prime_t : public std::exception
     {
