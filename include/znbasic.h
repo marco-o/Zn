@@ -12,6 +12,7 @@
 
 #include <tuple>
 #include <sstream>
+#include <thread>
 
 
 char *may_break(void)
@@ -74,6 +75,10 @@ namespace zn
 		return false;
 	}
 
+#ifndef _DEBUG
+#define HAVE_THREADING
+#endif
+
 	struct system_info_t
 	{
 		static const size_t memory(void)
@@ -84,6 +89,14 @@ namespace zn
 			const size_t max_mem = 1 * 512 * 1048576LL; // 0.5GB
 #endif	
 			return max_mem;
+		}
+		static const int cores(void)
+		{
+#ifdef HAVE_THREADING
+			return std::thread::hardware_concurrency();
+#else
+			return 1;
+#endif
 		}
 	};
 

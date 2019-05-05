@@ -32,13 +32,81 @@ namespace zn
 			small_int second; // size
 			// additional info on polynomial, ecc
 			int		dir_sign; // negative grows backwards
-			large_int final_remainder; // value of polinomial at end of range
-			sieve_range_t(const large_int &f = large_int(), const small_int &s = small_int()) : first(f), second(s) {}
+			large_int final_value(const large_int &m) const
+			{
+				large_int x = first + second * (dir_sign > 0 ? 1 : 0) ;
+				x = x * x % m;
+				if (dir_sign < 0)
+					x -= m;
+				return abs(x);
+			}
+			sieve_range_t(const large_int &f = large_int(), 
+				          const small_int &s = small_int(),
+						  int sgn = 1) : first(f), second(s), dir_sign(sgn) {}
 			sieve_range_t &operator++(void)
 			{
 				first += dir_sign * second;
 				return *this;
 			}
+			sieve_range_t first_half(void) const
+			{
+				sieve_range_t result = *this;
+				result.second /= 2;
+				return result;
+			}
+			sieve_range_t second_half(void) const
+			{
+				sieve_range_t result = *this;
+				small_int s1 = second / 2;
+				result.first += s1;
+				result.second -= s1;
+				return result;
+			}
+			large_int eval(const large_int &x, const large_int &m) const
+			{
+				if (dir_sign > 0)
+					return x * x - m;
+				else
+					return m - x * x;
+			}
+		};
+		class range_handler_t
+		{
+		public:
+			range_handler_t(const large_int &m, small_int base_size) : m_(m) 
+			{
+				sieve_range_t range;
+
+				range.first = safe_cast<large_int>(sqrt(m) + 1);
+				range.second = static_cast<small_int>(std::pow(base_size, 2.6));
+				range.dir_sign = 1;
+				const auto max_mem = system_info_t::memory();
+				const auto cores = system_info_t::cores();
+
+				range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
+				ranges_[range.final_value(m)] = range;
+				range.dir_sign = -1;
+				++range;
+				ranges_[range.final_value(m)] = range;
+			}
+			sieve_range_t next(void)
+			{
+				auto it = ranges_.begin();
+				auto result = it->second;
+				ranges_.erase(it);
+				auto next = result;
+				++next;
+				ranges_[next.final_value(m_)] = next;
+				return result;
+			}
+			sieve_range_t null(void) const
+			{
+				sieve_range_t nl{ 0, 0, 0 };
+				return nl;
+			}
+		public:
+			const large_int m_;
+			std::map<large_int, sieve_range_t> ranges_;
 		};
 		struct base_t
 		{
@@ -113,6 +181,7 @@ namespace zn
 			bool valid(void) const { return s != smooth_idle_e; }
 			bool candidate(void) const { return s == smooth_candidate_e ; }
 			bool square(void) const { return factors_.empty(); }
+			bool sign_neg(void) const { return sign_bit; }
 			large_int reminder(void) const { return f;}
 			const std::vector<int>	&factors(void) const { return factors_; }
 			void invalidate(void) { s = smooth_idle_e; }
@@ -177,6 +246,8 @@ namespace zn
 				large_int s1 = (sqr * sqr * f) % m ;
 				for (auto idx : factors_)
 					s1 = (s1 * base[idx].prime) % m;
+				if (sign_bit)
+					s1 = -s1;
 				s1 = (s1 - n * n) % m;
 				return s1 == 0;
 			}
@@ -213,10 +284,6 @@ namespace zn
 				if ((r = quadratic_residue(n1, p)) != 0)
 					base_.push_back(base_ref_t(p, r));
 			}
-#ifdef _DEBUG
-			if (static_cast<small_int>(base_.size()) > base_size)
-				base_.erase(base_.begin() + static_cast<int>(base_size), base_.end());
-#endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Actual base size: " << base_.size() << ", largest = " << base_.rbegin()->prime << std::endl;
 #endif // DBG_SIEVE	
@@ -226,48 +293,38 @@ namespace zn
 		}
 		large_int sieve(void)
 		{
-			sieve_range_t range;
-			range.first = safe_cast<large_int>(sqrt(n_) + 1);
-			range.second = static_cast<small_int>(std::pow(base_.size(), 2.6));
-			range.dir_sign = 1;
-			const size_t max_mem = system_info_t::memory();
+			range_handler_t range_handler(n_, base_.size());
 
 			int count = 0;
 			smooth_vect_t smooths;
-#define HAVE_THREADING
 			candidates_map_t candidates;
 #ifdef HAVE_THREADING
-			auto cores = std::thread::hardware_concurrency();
-			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
-			for (size_t i = 0; i < cores; i++, ++range)
+			int cores = system_info_t::cores();
+			for (int i = 0; i < cores; i++)
 			{
 				threads_.emplace_back(&quadratic_sieve_t::sieving_thread, this);
-				ranges_to_sieve_.push(range);
+				ranges_to_sieve_.push(range_handler.next());
 			}
-#else
-			auto cores = 1; // std::thread::hardware_concurrency();
-			range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
 #endif
-			for ( ; smooths.size() < base_.size() ; ++range)
+			for ( ; smooths.size() < base_.size() ; )
 			{
 #ifdef HAVE_THREADING
 				auto chunk = smooths_found_.pop();
 #else
-				auto chunk = sieve_range(range);
+				auto chunk = sieve_range(range_handler.next());
 #endif
 				process_candidate_chunk(candidates, chunk, smooths);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				std::cout << "Found = " << smooths.size() << " smooths (" << count++ << ")\r" << std::flush;
 #endif
 #ifdef HAVE_THREADING
-				ranges_to_sieve_.push(range);
+				ranges_to_sieve_.push(range_handler.next());
 #endif
 			}
 #ifdef HAVE_THREADING
-			range.second = 0;
 			ranges_to_sieve_.clear();
-			for (size_t i = 0; i < cores; i++)
-				ranges_to_sieve_.push(range);
+			for (int i = 0; i < cores; i++)
+				ranges_to_sieve_.push(range_handler.null());
 			for (auto &thread : threads_)
 				thread.join();
 			// pick remaining smooths
@@ -473,7 +530,7 @@ namespace zn
 		std::vector<std::vector<int>> solve(std::vector<smooth_t> &smooths)
 		{
 			size_t smooth_size = smooths.size();
-			size_t base_size = base_.size() ;
+			size_t base_size = base_.size() + 1 ;
 			size_t slots = (smooth_size + bits_per_slot - 1) / bits_per_slot;
 			std::vector<std::vector<slot_t>> matrix(base_size, std::vector<slot_t>(slots, 0));
 			for (size_t i = 0 ; i < smooth_size; i++)
@@ -481,10 +538,10 @@ namespace zn
 				const smooth_t &smooth = smooths[i];
 				int slot = static_cast<int>(i / bits_per_slot);
 				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
-		//		if (smooth.sign_bit)
-		//			matrix[0][slot] |= mask;
+				if (smooth.sign_neg())
+					matrix[0][slot] |= mask;
 				for (const auto idx : smooth.factors())
-					matrix[idx][slot] |= mask;
+					matrix[idx + 1][slot] |= mask;
 			}
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 			std::cout << "Initial status\n";
@@ -661,22 +718,17 @@ namespace zn
 		}
 		void build_sieving_range_exact(const sieve_range_t &range, std::vector<real> &values)
 		{
-			large_int n1 = range.first;
-			large_int n2 = n1 * n1 - n_;
 			std::vector<real> data(static_cast<size_t>(range.second));
 			for (small_int i = 0; i < range.second; i++)
 			{
+				large_int n2 = range.eval(range.first + i, n_);
 				values.push_back(std::log(safe_cast<real>(n2)));
-				n2 += n1 * 2 + 1;
-				n1++;
 			}
 		}
 		void  build_sieving_range(const sieve_range_t &range, std::vector<real> &values)
 		{
-			large_int n1 = range.first;
-			large_int n2 = n1 * n1 - n_;
-			large_int m1 = range.first + range.second;
-			large_int m2 = m1 * m1 - n_;
+			large_int n2 = range.eval(range.first, n_);
+			large_int m2 = range.eval(range.first + range.second - 1, n_);
 			real rn = std::abs(safe_cast<real>(n2));
 			real rm = std::abs(safe_cast<real>(m2));
 			real t = rn / rm + rm / rn - 2;
@@ -693,10 +745,8 @@ namespace zn
 				build_sieving_range_exact(range, values);
 			else
 			{
-				sieve_range_t r1(range.first, range.second / 2);
-				build_sieving_range(r1, values);
-				sieve_range_t r2(r1.first + r1.second, range.second - r1.second);
-				build_sieving_range(r2, values);
+				build_sieving_range(range.first_half(), values);
+				build_sieving_range(range.second_half(), values);
 			}
 		}
 		// removes element that appears only once

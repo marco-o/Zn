@@ -11,7 +11,6 @@
 #define znquadratic_sieve0_H
 
 #include <tuple>
-#include <thread>
 #include "znqueue.h"
 
 
