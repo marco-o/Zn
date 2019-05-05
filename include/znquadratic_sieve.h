@@ -99,15 +99,9 @@ namespace zn
 
 		};
 		enum smooth_status_e{ smooth_idle_e, smooth_valid_e, smooth_candidate_e };
-		struct smooth_t
+		class smooth_t
 		{
-			large_int				n; // number squared
-			std::vector<int>		factors;
-			large_int				f; // remainder after trial division
-			large_int				temp_r; // not necessary
-			large_int				sqr;
-			bool					sign_bit; // true if negative
-			smooth_status_e			s;
+		public:
 			smooth_t(void) : n(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
 
 			smooth_t(const large_int &n1, 
@@ -133,7 +127,7 @@ namespace zn
 						if (++power % 2 == 0)
 							sqr = (sqr * b.prime) % m;
 					if (power & 1)
-						factors.push_back(static_cast<int>(j));
+						factors_.push_back(static_cast<int>(j));
 				}
 				if (f == 1)
 					s = smooth_valid_e;
@@ -143,6 +137,11 @@ namespace zn
 					s = smooth_idle_e;
 			}
 			bool valid(void) const { return s != smooth_idle_e; }
+			bool candidate(void) const { return s == smooth_candidate_e ; }
+			bool square(void) const { return factors_.empty(); }
+			large_int reminder(void) const { return f;}
+			const std::vector<int>	&factors(void) const { return factors_; }
+			void invalidate(void) { s = smooth_idle_e; }
 			large_int result(const large_int &m)
 			{
 				large_int a = gcd(m, n + sqr);
@@ -164,10 +163,10 @@ namespace zn
 
 				sign_bit ^= rhs.sign_bit;
 				std::vector<int>		fact;
-				auto it1  = factors.begin();
-				auto end1 = factors.end();
-				auto it2 = rhs.factors.begin();
-				auto end2 = rhs.factors.end();
+				auto it1  = factors_.begin();
+				auto end1 = factors_.end();
+				auto it2 = rhs.factors_.begin();
+				auto end2 = rhs.factors_.end();
 				while (it1 != end1 && it2 != end2)
 				{
 					if (*it1 < *it2)
@@ -185,17 +184,36 @@ namespace zn
 					fact.insert(fact.end(), it1, end1);
 				if (it2 != end2)
 					fact.insert(fact.end(), it2, end2);
-				factors = fact;
+				factors_ = fact;
 				s = smooth_valid_e;
+			}
+			void remap_factors(const std::vector<int> &fmap)
+			{
+				for (auto &idx : factors_)
+				{
+					idx = fmap[idx];
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
+					if (idx < 0)
+						std::cout << "Factor has been removed...\n";
+#endif
+				}
 			}
 			bool invariant(const large_int &m, const std::vector<base_ref_t> &base) const
 			{
 				large_int s1 = (sqr * sqr * f) % m ;
-				for (auto idx : factors)
+				for (auto idx : factors_)
 					s1 = (s1 * base[idx].prime) % m;
 				s1 = (s1 - n * n) % m;
 				return s1 == 0;
 			}
+		private:
+			large_int				n; // number squared
+			std::vector<int>		factors_;
+			large_int				f; // remainder after trial division
+			large_int				temp_r; // not necessary
+			large_int				sqr;
+			bool					sign_bit; // true if negative
+			smooth_status_e			s;
 		};
 		typedef std::vector<smooth_t> smooth_vect_t;
 		typedef std::map<large_int, smooth_t> candidates_map_t;
@@ -244,9 +262,9 @@ namespace zn
 				auto smooth = sieve_range(range);
 				for (auto &s : smooth)
 				{
-					if (s.s == smooth_candidate_e)
+					if (s.candidate())
 					{
-						auto it = candidates.find(s.f);
+						auto it = candidates.find(s.reminder());
 						if (it != candidates.end())
 						{
 							s.compose(it->second, n_, base_);
@@ -257,21 +275,20 @@ namespace zn
 						}
 						else // just put it aside
 						{
-							candidates[s.f] = s;
+							candidates[s.reminder()] = s;
 							continue;
 						}
 					}
 					int si = static_cast<int>(smooths.size());
-					for (auto f : s.factors)
+					for (auto f : s.factors())
 						base_[f].smooths.push_back(si);
 					smooths.push_back(s);
 				}
 			}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "\nFound " << smooths.size() << std::endl;
-			if (smooths.size() > base_.size() * 9 / 8)
-				smooths.erase(smooths.begin() + base_.size() * 9 / 8, smooths.end());
 #endif
+			erase_base(smooths);
 			auto result = solve(smooths);
 			for (auto &item : result)
 			{
@@ -279,7 +296,7 @@ namespace zn
 				for (auto index : item)
 					s.compose(smooths[index], n_, base_);
 #if DBG_SIEVE >= DBG_SIEVE_WARNING
-				if (s.factors.size() > 0)
+				if (!s.square())
 					std::cout << "Non null factors!\n";
 #endif // DBG_SIEVE	
 				large_int r = s.result(n_);
@@ -293,6 +310,60 @@ namespace zn
 			return 1;
 		}
 	private:
+		void erase_base(base_ref_t &base, std::vector<smooth_t> &smooths)
+		{
+			size_t count = base.smooths.size();
+			smooth_t &ref = smooths[base.smooths[0]];
+			for (size_t i = 1; i < count; i++)
+			{
+				smooth_t &value = smooths[base.smooths[i]];
+				value.compose(ref);
+			}
+			ref.invalidate();
+		}
+		void erase_base(std::vector<smooth_t> &smooths)
+		{
+			std::vector<int> base_remapping;
+			int base_size = static_cast<int>(base_.size());
+			int base_map = 0;
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			std::cout << "Removing unused bases: start from " << base_size << " and " << smooths.size() << std::endl;
+#endif
+			for (int i = 0; i < base_size; i++)
+			{
+				auto &base = base_[i];
+				if (base.smooths.size() < 2)
+				{
+					base_remapping.push_back(-1);
+					if (!base.smooths.empty())
+						smooths[base.smooths[0]].invalidate();
+					continue; // remove it
+				}
+				base_remapping.push_back(base_map);
+				base.smooths.clear();
+				if (base_map != i)
+					base_[base_map] = base;
+				base_map++;
+			}
+			base_.erase(base_.begin() + base_map, base_.end());
+			// compact smooths
+			int smooths_size = smooths.size();
+			int smooths_map = 0;
+			for (int i = 0; i < smooths_size; i++)
+			{
+				auto &smooth = smooths[i];
+				if (!smooth.valid())
+					continue;
+				smooth.remap_factors(base_remapping);
+				if (i != smooths_map)
+					smooths[smooths_map] = smooth;
+				smooths_map++;
+			}
+			smooths.erase(smooths.begin() + smooths_map, smooths.end());
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			std::cout << "Base reduced to " << base_.size() << ", smooth to " << smooths.size()  << std::endl;
+#endif
+		}
 		int find_nonzero(const std::vector<slot_t> &v, int size, int i)
 		{
 			int slot = static_cast<int>(i / bits_per_slot);
@@ -391,7 +462,7 @@ namespace zn
 				slot_t mask = 1 << static_cast<slot_t>(i % bits_per_slot);
 		//		if (smooth.sign_bit)
 		//			matrix[0][slot] |= mask;
-				for (auto idx : smooth.factors)
+				for (const auto idx : smooth.factors())
 					matrix[idx][slot] |= mask;
 			}
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
