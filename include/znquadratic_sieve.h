@@ -17,6 +17,8 @@
 #include <map>
 #include "znqueue.h"
 
+#define HAVE_MULTIPLE
+
 namespace zn
 {
 	template <class large_int, class small_int, class real>
@@ -39,10 +41,12 @@ namespace zn
 				large_int d = b * b - 4 * a *c;
 				order_ = safe_cast<small_int>(-c_ / m_);
 				begin_ = safe_cast<large_int>((-b + sqrt(d) / (2 * a)) + 1);
+				step_ = 0;
 			}
 			large_int first(void) const { return begin_; }
 			small_int second(void) const { return size_; }
 			bool      sign(void) const { return dir_sign_ < 0; }
+			int		  step(void) const { return step_; }
 			large_int module(void) const { return m_;}
 			small_int order(void) const { return order_; }
 			sieve_range_t negate(void) const
@@ -50,11 +54,13 @@ namespace zn
 				sieve_range_t result = *this;
 				result.dir_sign_ = -dir_sign_;
 				++result;
+				result.step_ = 0;
 				return result;
 			}
 			sieve_range_t &operator++(void)
 			{
 				begin_ += dir_sign_ * size_;
+				step_++;
 				return *this;
 			}
 			large_int mid_value(void) const
@@ -111,9 +117,17 @@ namespace zn
 			small_int order_;
 							  // additional info on polynomial, ecc
 			int		dir_sign_; // negative grows backwards
+			int     step_;
 		};
 		class range_handler_t
 		{
+			bool is_square1(small_int n)
+			{
+				if (n < 4)
+					return false; // 1 is OK
+				small_int n1 = static_cast<small_int>(std::sqrt(n) + 0.25);
+				return n1 * n1 == n;
+			}
 		public:
 			range_handler_t(const large_int &m, small_int base_size) : m_(m) 
 			{
@@ -121,7 +135,12 @@ namespace zn
 				const auto cores = system_info_t::cores();
 				small_int size = std::min<small_int>(static_cast<small_int>(std::pow(base_size, 2.6)), 
 					                                 static_cast<small_int>(max_mem / (sizeof(real) * cores)));
+#ifdef HAVE_MULTIPLE
+				for (small_int i = 1; i < 10; i++)
+					if (!is_square1(i))
+#else
 				for (small_int i = 1; i < 2; i++)
+#endif
 				{
 					sieve_range_t rangep(size, m, -m * i);
 					ranges_[rangep.mid_value()] = rangep;
@@ -153,8 +172,7 @@ namespace zn
 			}
 			sieve_range_t null(void) const
 			{
-				sieve_range_t nl{ 0, 0, 0 };
-				return nl;
+				return sieve_range_t();
 			}
 		public:
 			const large_int m_;
@@ -325,7 +343,11 @@ namespace zn
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
 			if (base_size != 0)
+#ifdef HAVE_MULTIPLE
+				range = primes_range(base_size);
+#else
 				range = primes_range(base_size * 2);
+#endif
 			else
 			{
 				double n1 = safe_cast<double>(n);
@@ -334,11 +356,13 @@ namespace zn
 				range = static_cast<small_int>(std::exp(e2));
 			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
-			small_int r;
+			small_int r = 1;
 			for (auto p : primes)
 			{
 				small_int n1 = safe_cast<small_int>(n % p);
+#ifndef HAVE_MULTIPLE
 				if ((r = quadratic_residue(n1, p)) != 0)
+#endif
 					base_.push_back(base_ref_t(p, r));
 			}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
@@ -392,10 +416,14 @@ namespace zn
 			}
 #endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
+			int failed = 0;
 			std::cout << "\nFound " << smooths.size() << std::endl;
 #endif
+			std::cout << "Start erasing" << std::endl;
 			erase_base(smooths);
+			std::cout << "Erasure done" << std::endl;
 			auto result = solve(smooths);
+			large_int r = 1;
 			for (auto &item : result)
 			{
 				smooth_t s;
@@ -405,15 +433,20 @@ namespace zn
 				if (!s.square())
 					std::cout << "Non null factors!\n";
 #endif // DBG_SIEVE	
-				large_int r = s.result(n_);
+				r = s.result(n_);
 				if (r != 1 && r != n_)
-					return r;
+					break;
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				else
-					std::cout << "Attempt failed\n";
+					failed++;
 #endif // DBG_SIEVE	
 			}
-			return 1;
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			if (failed > 0)
+				std::cout << "Failed " << failed << " attempts\n";
+#endif // DBG_SIEVE	
+					
+			return r;
 		}
 	private:
 		void process_candidate_chunk(candidates_map_t &candidates,
@@ -676,8 +709,6 @@ namespace zn
 						idx.push_back(smooth_perm[rows_idx[j]]);  // make use of smooths_perm
 				idx.push_back(smooth_perm[i]);
 				result.push_back(idx);
-				if (result.size() > 30)
-					break;
 			}
 			return result;
 		}
@@ -705,7 +736,10 @@ namespace zn
 					}
 				}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Range order = " << range.order() << ", smooths = " << smooths.size() << std::endl;
+			std::cout << "Range order = " << range.order() 
+				      << ", sign = " << range.sign() 
+					  << ", step = " << range.step() 
+				      << ", smooths = " << smooths.size() << std::endl;
 #endif
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
 			if (smooths.size() == 0)
