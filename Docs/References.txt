@@ -28,3 +28,21 @@ sys     0m0.000s
 
 
 (50 digits in 1' 12" => 0.02h)
+
+ time ./tests/Release/main --n=75429097546131467404660522648438792790000858214626959 --qsc
+Factorization of 75429097546131467404660522648438792790000858214626959
+Actual base size: 8078, largest = 178069
+Found = 8149 smooths (135)
+Found 8694
+Removing unused bases: start from 8078 and 8694
+Base reduced to 7478, smooth to 8258
+Attempt failed
+Attempt failed
+Attempt failed
+Attempt failed
+603354356421873315791775541 * 125016247489212539220552499 = 75429097546131467404660522648438792790000858214626959
+
+real    3m9.539s
+user    0m0.000s
+sys     0m0.015s
+(52.8 digits, 32bit version, 2' 53" with base-size=6000)
