@@ -15,7 +15,7 @@
 #include <thread>
 
 
-char *may_break(void)
+const char *may_break(void)
 {
 	return "!";
 }
@@ -43,7 +43,7 @@ namespace zn
 	{
 		static D exec(const S &s)
 		{	// For some reason the const_cast is required...
-			return const_cast<S &>(s).convert_to<D>();
+			return const_cast<S &>(s).template convert_to<D>();
 		}
 	};
 
