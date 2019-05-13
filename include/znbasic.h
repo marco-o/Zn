@@ -62,19 +62,6 @@ namespace zn
 		return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
 	}
 
-	template <class N>
-	bool divide_qr1(N &n, const N &d)
-	{
-		N r, q;
-		divide_qr(n, d, q, r);
-		if (r == 0)
-		{
-			n = q;
-			return true;
-		}
-		return false;
-	}
-
 #ifndef _DEBUG
 #define HAVE_THREADING
 #endif
@@ -213,5 +200,20 @@ namespace zn
 		}
 		return r;
 	}
+	
+	template <class N>
+	bool divide_qr1(N &n, const N &d)
+	{
+		N r, q;
+		divide_qr(n, d, q, r);
+		if (r == 0)
+		{
+			n = q;
+			return true;
+		}
+		return false;
+	}
+
+	
 }
 #endif

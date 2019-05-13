@@ -714,8 +714,8 @@ namespace zn
 		}
 		bool bit_test(const std::vector<slot_t> &v, size_t index)
 		{
-			size_t slot = i / bits_per_slot;
-			return (v[slot] & (1 << static_cast<slot_t>(i % bits_per_slot))) != 0;
+			size_t slot = index / bits_per_slot;
+			return (v[slot] & (1 << static_cast<slot_t>(index % bits_per_slot))) != 0;
 		}
 		std::vector<smooth_t> collect_smooth(const sieve_range_t &range,
 											 const std::vector<real> &values)
