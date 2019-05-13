@@ -40,9 +40,10 @@ namespace zn
 			{
 				large_int d = b * b - 4 * a *c;
 				order_ = safe_cast<small_int>(-c_ / m_);
-				begin_ = safe_cast<large_int>((-b + sqrt(d) / (2 * a)) + 1);
+				begin_ = safe_cast<large_int>(((-b + sqrt(d)) / (2 * a)) + 1);
 				step_ = 0;
 			}
+			large_int a(void) const { return a_; }
 			large_int first(void) const { return begin_; }
 			small_int second(void) const { return size_; }
 			bool      sign(void) const { return dir_sign_ < 0; }
@@ -121,28 +122,24 @@ namespace zn
 		};
 		class range_handler_t
 		{
-			bool is_square1(small_int n)
-			{
-				if (n < 4)
-					return false; // 1 is OK
-				small_int n1 = static_cast<small_int>(std::sqrt(n) + 0.25);
-				return n1 * n1 == n;
-			}
+
 		public:
-			range_handler_t(const large_int &m, small_int base_size) : m_(m) 
+			range_handler_t(const large_int &m, 
+				            small_int base_size, 
+				            const std::vector<std::pair<small_int, small_int>> &p) : m_(m)
 			{
 				const auto max_mem = system_info_t::memory();
 				const auto cores = system_info_t::cores();
 				small_int size = std::min<small_int>(static_cast<small_int>(std::pow(base_size, 2.6)), 
 					                                 static_cast<small_int>(max_mem / (sizeof(real) * cores)));
+				large_int a = 1;
+				large_int b = 0;
+				large_int c = -m;
 #ifdef HAVE_MULTIPLE
-				for (small_int i = 1; i < 10; i++)
-					if (!is_square1(i))
-#else
-				for (small_int i = 1; i < 2; i++)
+				for (size_t i = 0; i < p.size(); i++)
 #endif
 				{
-					sieve_range_t rangep(size, m, -m * i);
+					sieve_range_t rangep(size, m, c, b, a);
 					ranges_[rangep.mid_value()] = rangep;
 					sieve_range_t rangen = rangep.negate();
 					ranges_[rangen.mid_value()] = rangen;
@@ -153,11 +150,20 @@ namespace zn
 					large_int y1 = rangep.eval(-1);
 					if (y0 < 0 || y1 > 0)
 					{
-						std::cout << "Wrong range at i = " << i << ":\n" 
+						std::cout << "Wrong range at a = " << a << ":\n" 
 								  << "y0 = " << y0 << "\n" 
 								  << "y1 = " << y1 << std::endl;
 						throw std::runtime_error("Polynomial root problem");
 					}
+#ifdef HAVE_MULTIPLE
+					a = p[i].first;
+					b = p[i].second;
+					c = b * b - m;
+					if (c % a != 0)
+						std::cout << "Hmmmm\n";
+					c = c / a;
+					b *= 2;
+#endif
 				}
 			}
 			sieve_range_t next(void)
@@ -343,11 +349,7 @@ namespace zn
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
 			if (base_size != 0)
-#ifdef HAVE_MULTIPLE
-				range = primes_range(base_size);
-#else
 				range = primes_range(base_size * 2);
-#endif
 			else
 			{
 				double n1 = safe_cast<double>(n);
@@ -360,9 +362,7 @@ namespace zn
 			for (auto p : primes)
 			{
 				small_int n1 = safe_cast<small_int>(n % p);
-#ifndef HAVE_MULTIPLE
 				if ((r = quadratic_residue(n1, p)) != 0)
-#endif
 					base_.push_back(base_ref_t(p, r));
 			}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
@@ -372,9 +372,20 @@ namespace zn
 			smooth_thrs_ = base_.rbegin()->prime;
 			smooth_thrs_ *= smooth_thrs_;
 		}
+		std::vector < std::pair<small_int, small_int>> base_resume(void)
+		{
+			std::vector < std::pair<small_int, small_int>> result;
+			for (const auto &base : base_)
+			{
+				result.push_back(std::pair<small_int, small_int>(base.prime, base.residue));
+				if (result.size() > 1)
+					break;
+			}
+			return result;
+		}
 		large_int sieve(void)
 		{
-			range_handler_t range_handler(n_, base_.size());
+			range_handler_t range_handler(n_, base_.size(), base_resume());
 
 			int count = 0;
 			smooth_vect_t smooths;
@@ -761,11 +772,8 @@ namespace zn
 		void sieve_range(std::vector<real> &values, const sieve_range_t &range, const large_int &begin)
 		{
 			auto size = values.size();
-			for (const auto &base1 : base_)
+			for (const auto &base : base_)
 			{
-				base_t base = base1;
-				if (!base.eval_residue(-range.eval_plain(0)))
-					continue;
 				sieve_range(values, range, begin, base);
 				if (base.prime != 2)
 					sieve_range(values, range, begin, -base);
@@ -784,7 +792,9 @@ namespace zn
 		}
 		void sieve_range(std::vector<real> &values, const sieve_range_t &range, const large_int &begin, const base_t &base)
 		{
-			large_int n = (begin / base.prime) * base.prime + base.residue;
+			large_int n = (begin / base.prime) * base.prime;
+			if (range.a() == 1)
+				n += base.residue;
 			if (n < begin)
 				n += base.prime;
 			auto size = values.size();
