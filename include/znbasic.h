@@ -15,7 +15,7 @@
 #include <thread>
 
 
-char *may_break(void)
+const char *may_break(void)
 {
 	return "!";
 }
@@ -43,7 +43,7 @@ namespace zn
 	{
 		static D exec(const S &s)
 		{	// For some reason the const_cast is required...
-			return const_cast<S &>(s).convert_to<D>();
+			return const_cast<S &>(s).template convert_to<D>();
 		}
 	};
 
@@ -60,19 +60,6 @@ namespace zn
 	D safe_cast(const S &s)
 	{
 		return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
-	}
-
-	template <class N>
-	bool divide_qr1(N &n, const N &d)
-	{
-		N r, q;
-		divide_qr(n, d, q, r);
-		if (r == 0)
-		{
-			n = q;
-			return true;
-		}
-		return false;
 	}
 
 #ifndef _DEBUG
@@ -213,5 +200,20 @@ namespace zn
 		}
 		return r;
 	}
+	
+	template <class N>
+	bool divide_qr1(N &n, const N &d)
+	{
+		N r, q;
+		divide_qr(n, d, q, r);
+		if (r == 0)
+		{
+			n = q;
+			return true;
+		}
+		return false;
+	}
+
+	
 }
 #endif
