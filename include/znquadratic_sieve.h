@@ -17,6 +17,8 @@
 #include <map>
 #include "znqueue.h"
 
+#define HAVE_MULTIPLE
+
 namespace zn
 {
 	template <class large_int, class small_int, class real>
@@ -26,68 +28,137 @@ namespace zn
 		typedef long long long_t;
 		typedef unsigned int slot_t;
 		enum {bits_per_slot = 8 * sizeof(slot_t) };
-		struct sieve_range_t
+		class sieve_range_t
 		{
-			large_int first; // beginning
-			small_int second; // size
-			// additional info on polynomial, ecc
-			int		dir_sign; // negative grows backwards
-			large_int final_value(const large_int &m) const
+		public:
+			sieve_range_t(void) : begin_(0), size_(0), a_(0), b_(0), c_(0), m_(0), dir_sign_(0) {}
+			sieve_range_t(const small_int &size, 
+						  const large_int &m, 
+				          const large_int &c,
+						  const large_int &b = large_int(0),
+						  const large_int &a = large_int(1)) : size_(size), m_(m), a_(a), b_(b), c_(c), dir_sign_(1)
 			{
-				large_int x = first + second * (dir_sign > 0 ? 1 : 0) ;
-				x = x * x % m;
-				if (dir_sign < 0)
-					x -= m;
-				return abs(x);
+				large_int d = b * b - 4 * a *c;
+				order_ = safe_cast<small_int>(-c_ / m_);
+				begin_ = safe_cast<large_int>((-b + sqrt(d) / (2 * a)) + 1);
+				step_ = 0;
 			}
-			sieve_range_t(const large_int &f = large_int(), 
-				          const small_int &s = small_int(),
-						  int sgn = 1) : first(f), second(s), dir_sign(sgn) {}
+			large_int first(void) const { return begin_; }
+			small_int second(void) const { return size_; }
+			bool      sign(void) const { return dir_sign_ < 0; }
+			int		  step(void) const { return step_; }
+			large_int module(void) const { return m_;}
+			small_int order(void) const { return order_; }
+			sieve_range_t negate(void) const
+			{
+				sieve_range_t result = *this;
+				result.dir_sign_ = -dir_sign_;
+				++result;
+				result.step_ = 0;
+				return result;
+			}
 			sieve_range_t &operator++(void)
 			{
-				first += dir_sign * second;
+				begin_ += dir_sign_ * size_;
+				step_++;
 				return *this;
+			}
+			large_int mid_value(void) const
+			{
+				return eval(size_ / 2);
 			}
 			sieve_range_t first_half(void) const
 			{
 				sieve_range_t result = *this;
-				result.second /= 2;
+				result.size_ /= 2;
 				return result;
 			}
 			sieve_range_t second_half(void) const
 			{
 				sieve_range_t result = *this;
-				small_int s1 = second / 2;
-				result.first += s1;
-				result.second -= s1;
+				small_int s1 = size_ / 2;
+				result.begin_ += s1;
+				result.size_ -= s1;
 				return result;
 			}
-			large_int eval(const large_int &x, const large_int &m) const
+			large_int eval(const small_int dx) const
 			{
-				if (dir_sign > 0)
-					return x * x - m;
-				else
-					return m - x * x;
+				return eval_base(begin_ + dx);
 			}
+			std::pair<large_int, large_int> eval_pair(const small_int &dx) const
+			{
+				std::pair<large_int, large_int> result;
+				result.second = begin_ + dx;
+				result.first = eval_base(result.second);
+				return result;
+			}
+			large_int eval_base(const large_int &x) const
+			{
+				large_int y = (a_ * x + b_) % m_;
+				y = (y * x + c_) % m_;
+				if (dir_sign_ > 0)
+					return y;
+				else
+					return -y;
+			}
+			large_int eval_plain(const large_int &x) const
+			{
+				return (a_ * x + b_) * x + c_;
+			}
+		private:
+			large_int a_; // polynomial
+			large_int b_;
+			large_int c_;
+
+			large_int m_; // module
+
+			large_int begin_; // beginning of sieving range
+			small_int size_; // size
+			small_int order_;
+							  // additional info on polynomial, ecc
+			int		dir_sign_; // negative grows backwards
+			int     step_;
 		};
 		class range_handler_t
 		{
+			bool is_square1(small_int n)
+			{
+				if (n < 4)
+					return false; // 1 is OK
+				small_int n1 = static_cast<small_int>(std::sqrt(n) + 0.25);
+				return n1 * n1 == n;
+			}
 		public:
 			range_handler_t(const large_int &m, small_int base_size) : m_(m) 
 			{
-				sieve_range_t range;
-
-				range.first = safe_cast<large_int>(sqrt(m) + 1);
-				range.second = static_cast<small_int>(std::pow(base_size, 2.6));
-				range.dir_sign = 1;
 				const auto max_mem = system_info_t::memory();
 				const auto cores = system_info_t::cores();
-
-				range.second = std::min<small_int>(range.second, static_cast<small_int>(max_mem / (sizeof(real) * cores)));
-				ranges_[range.final_value(m)] = range;
-				range.dir_sign = -1;
-				++range;
-				ranges_[range.final_value(m)] = range;
+				small_int size = std::min<small_int>(static_cast<small_int>(std::pow(base_size, 2.6)), 
+					                                 static_cast<small_int>(max_mem / (sizeof(real) * cores)));
+#ifdef HAVE_MULTIPLE
+				for (small_int i = 1; i < 10; i++)
+					if (!is_square1(i))
+#else
+				for (small_int i = 1; i < 2; i++)
+#endif
+				{
+					sieve_range_t rangep(size, m, -m * i);
+					ranges_[rangep.mid_value()] = rangep;
+					sieve_range_t rangen = rangep.negate();
+					ranges_[rangen.mid_value()] = rangen;
+					/*
+					 * Small check
+					 */
+					large_int y0 = rangep.eval(0);
+					large_int y1 = rangep.eval(-1);
+					if (y0 < 0 || y1 > 0)
+					{
+						std::cout << "Wrong range at i = " << i << ":\n" 
+								  << "y0 = " << y0 << "\n" 
+								  << "y1 = " << y1 << std::endl;
+						throw std::runtime_error("Polynomial root problem");
+					}
+				}
 			}
 			sieve_range_t next(void)
 			{
@@ -96,13 +167,12 @@ namespace zn
 				ranges_.erase(it);
 				auto next = result;
 				++next;
-				ranges_[next.final_value(m_)] = next;
+				ranges_[next.mid_value()] = next;
 				return result;
 			}
 			sieve_range_t null(void) const
 			{
-				sieve_range_t nl{ 0, 0, 0 };
-				return nl;
+				return sieve_range_t();
 			}
 		public:
 			const large_int m_;
@@ -125,6 +195,12 @@ namespace zn
 				result.residue = prime - residue;
 				return result;
 			}
+			bool eval_residue(const large_int &n)
+			{
+				large_int n1 = n % prime;
+				residue = static_cast<small_int>(quadratic_residue<large_int>(n1, prime, prime / prime0)); // actually a power of prime
+				return residue != 0 ;
+			}
 			// what about substitute composition with lifting?
 			void compose(const base_t &rhs, const large_int &n)
 			{
@@ -146,18 +222,16 @@ namespace zn
 		public:
 			smooth_t(void) : n(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
 
-			smooth_t(const large_int &n1, 
-				     const large_int &r1, 
-				     const large_int &m, 
+			smooth_t(const sieve_range_t &range,
+					 size_t offset, 
 				     const large_int &thrs, 
-				     const std::vector<base_ref_t> &base) : n(n1), f(r1), sqr(1), sign_bit(false) 
+				     const std::vector<base_ref_t> &base) : sqr(1), sign_bit(range.sign()) 
 			{
-				if (f < 0)
-				{
-					sign_bit = true;
-					f = -f;
-				}
-				temp_r = r1;
+				auto r = range.eval_pair(offset);
+				auto m = range.module();
+				f = r.first;
+				n = r.second;
+				//temp_r = r1;
 				size_t base_size = base.size();
 				for (size_t j = 0; j < base_size; j++)
 				{
@@ -197,7 +271,7 @@ namespace zn
 			{
 				n = (n * rhs.n) % m;
 				sqr = (sqr * rhs.sqr) % m;
-				temp_r = (temp_r * rhs.temp_r) % m;
+				//temp_r = (temp_r * rhs.temp_r) % m;
 				if (rhs.f == f)
 				{
 					sqr = (sqr * f) % m;
@@ -241,8 +315,9 @@ namespace zn
 #endif
 				}
 			}
-			bool invariant(const large_int &m, const std::vector<base_ref_t> &base) const
+			bool invariant(const sieve_range_t &range, const std::vector<base_ref_t> &base) const
 			{
+				large_int m = range.module();
 				large_int s1 = (sqr * sqr * f) % m ;
 				for (auto idx : factors_)
 					s1 = (s1 * base[idx].prime) % m;
@@ -255,7 +330,7 @@ namespace zn
 			large_int				n; // number squared
 			std::vector<int>		factors_;
 			large_int				f; // remainder after trial division
-			large_int				temp_r; // not necessary
+			//large_int				temp_r; // not necessary
 			large_int				sqr;
 			bool					sign_bit; // true if negative
 			smooth_status_e			s;
@@ -268,7 +343,11 @@ namespace zn
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
 			if (base_size != 0)
+#ifdef HAVE_MULTIPLE
+				range = primes_range(base_size);
+#else
 				range = primes_range(base_size * 2);
+#endif
 			else
 			{
 				double n1 = safe_cast<double>(n);
@@ -277,11 +356,13 @@ namespace zn
 				range = static_cast<small_int>(std::exp(e2));
 			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
-			small_int r;
+			small_int r = 1;
 			for (auto p : primes)
 			{
 				small_int n1 = safe_cast<small_int>(n % p);
+#ifndef HAVE_MULTIPLE
 				if ((r = quadratic_residue(n1, p)) != 0)
+#endif
 					base_.push_back(base_ref_t(p, r));
 			}
 #if DBG_SIEVE >= DBG_SIEVE_INFO
@@ -335,10 +416,14 @@ namespace zn
 			}
 #endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
+			int failed = 0;
 			std::cout << "\nFound " << smooths.size() << std::endl;
 #endif
+			std::cout << "Start erasing" << std::endl;
 			erase_base(smooths);
+			std::cout << "Erasure done" << std::endl;
 			auto result = solve(smooths);
+			large_int r = 1;
 			for (auto &item : result)
 			{
 				smooth_t s;
@@ -348,15 +433,20 @@ namespace zn
 				if (!s.square())
 					std::cout << "Non null factors!\n";
 #endif // DBG_SIEVE	
-				large_int r = s.result(n_);
+				r = s.result(n_);
 				if (r != 1 && r != n_)
-					return r;
+					break;
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				else
-					std::cout << "Attempt failed\n";
+					failed++;
 #endif // DBG_SIEVE	
 			}
-			return 1;
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			if (failed > 0)
+				std::cout << "Failed " << failed << " attempts\n";
+#endif // DBG_SIEVE	
+					
+			return r;
 		}
 	private:
 		void process_candidate_chunk(candidates_map_t &candidates,
@@ -371,7 +461,7 @@ namespace zn
 					if (it != candidates.end())
 					{
 						s.compose(it->second, n_, base_);
-#if DBG_SIEVE >= DBG_SIEVE_ERROR
+#if 0 // DBG_SIEVE >= DBG_SIEVE_ERROR
 						if (!s.invariant(n_, base_))
 							std::cout << "Hmmm";
 #endif // DBG_SIEVE	
@@ -619,8 +709,6 @@ namespace zn
 						idx.push_back(smooth_perm[rows_idx[j]]);  // make use of smooths_perm
 				idx.push_back(smooth_perm[i]);
 				result.push_back(idx);
-				if (result.size() > 30)
-					break;
 			}
 			return result;
 		}
@@ -633,67 +721,83 @@ namespace zn
 											 const std::vector<real> &values)
 		{
 			std::vector<smooth_t> smooths;
-			for (int i = 0; i < range.second; i++)
+			size_t size = static_cast<size_t>(range.second());
+			for (size_t i = 0; i < size; i++)
 				if (values[i] < sieve_thrs_)
 				{
-					large_int n = range.first + i;
-					large_int r = n * n - n_;
-					smooth_t s(n, r, n_, smooth_thrs_, base_);
+					smooth_t s(range, i, smooth_thrs_, base_);
 					if (s.valid())
 					{
 						smooths.push_back(s);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
-						if (!s.invariant(n_, base_))
+						if (!s.invariant(range, base_))
 							std::cout << "Hmm";
 #endif
 					}
 				}
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			std::cout << "Range order = " << range.order() 
+				      << ", sign = " << range.sign() 
+					  << ", step = " << range.step() 
+				      << ", smooths = " << smooths.size() << std::endl;
+#endif
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+			if (smooths.size() == 0)
+				std::cout << "\nNo smooths on range " << range.order() << "\n"
+				          << "Prev value " << range.eval(-1) << "\n"
+				          << "First value " << range.eval(0) << "\n"
+						  << "Last value " << range.eval(range.second() - 1) << std::endl ;
+#endif				
 			return smooths;
 		}
 		smooth_vect_t sieve_range(const sieve_range_t &range)
 		{
 			std::vector<real> values;
-			values.reserve(static_cast<size_t>(range.second));
+			values.reserve(static_cast<size_t>(range.second()));
 			build_sieving_range(range, values);
-			sieve_range(values, range.first);
+			sieve_range(values, range, range.first());
 			return collect_smooth(range, values);
 		}
-		void sieve_range(std::vector<real> &values, const large_int &begin)
+		void sieve_range(std::vector<real> &values, const sieve_range_t &range, const large_int &begin)
 		{
 			auto size = values.size();
-			for (const auto &base : base_)
+			for (const auto &base1 : base_)
 			{
-				sieve_range(values, begin, base);
+				base_t base = base1;
+				if (!base.eval_residue(-range.eval_plain(0)))
+					continue;
+				sieve_range(values, range, begin, base);
 				if (base.prime != 2)
-					sieve_range(values, begin, -base);
+					sieve_range(values, range, begin, -base);
 				base_t powers = base;
-				small_int prime_power_end = static_cast<small_int>(std::numeric_limits<small_int>::max() / base.prime);
+				small_int prime_power_end = static_cast<small_int>(std::numeric_limits<int>::max() / base.prime);
 				for (int i = 0; (i < 10) && (powers.prime < prime_power_end); i++)
 				{
-					powers.compose(base, n_);
+					powers.compose(base, -range.eval_plain(0));
 					if (powers.residue == 0)
 						break;
-					sieve_range(values, begin, powers);
+					sieve_range(values, range, begin, powers);
 					if (powers.prime != 2)
-						sieve_range(values, begin, -powers);
+						sieve_range(values, range, begin, -powers);
 				}
 			}
 		}
-		void sieve_range(std::vector<real> &values, const large_int &begin, const base_t &base)
+		void sieve_range(std::vector<real> &values, const sieve_range_t &range, const large_int &begin, const base_t &base)
 		{
 			large_int n = (begin / base.prime) * base.prime + base.residue;
 			if (n < begin)
 				n += base.prime;
 			auto size = values.size();
 			size_t pos = safe_cast<size_t, large_int>(n - begin);
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-			if (((n *n - n_) % base.prime) != 0)
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			if ((range.eval_plain(n) % base.prime) != 0)
 			{
 				std::cout << "Error: n = " << n 
-					      << "\nn_ = " << n_ 
+					      << "\np(n) = " << range.eval_plain(n)
 					      << "\np = " << base.prime 
 					      << "\nr = " << base.residue 
 					      << "\np0= " << base.prime0
+					      << "\npos= " << pos << ", n-begin=" << (n - begin) 
 					      << std::endl;
 				throw std::runtime_error("Quadratic residue problem");
 			}
@@ -718,30 +822,32 @@ namespace zn
 		}
 		void build_sieving_range_exact(const sieve_range_t &range, std::vector<real> &values)
 		{
-			std::vector<real> data(static_cast<size_t>(range.second));
-			for (small_int i = 0; i < range.second; i++)
+			size_t size = static_cast<size_t>(range.second());
+			std::vector<real> data(size);
+			for (size_t i = 0; i < size; i++)
 			{
-				large_int n2 = range.eval(range.first + i, n_);
+				large_int n2 = range.eval(i);
 				values.push_back(std::log(safe_cast<real>(n2)));
 			}
 		}
 		void  build_sieving_range(const sieve_range_t &range, std::vector<real> &values)
 		{
-			large_int n2 = range.eval(range.first, n_);
-			large_int m2 = range.eval(range.first + range.second - 1, n_);
+			large_int n2 = range.eval(0);
+			large_int m2 = range.eval(range.second() - 1);
 			real rn = std::abs(safe_cast<real>(n2));
 			real rm = std::abs(safe_cast<real>(m2));
 			real t = rn / rm + rm / rn - 2;
+			size_t size = static_cast<size_t>(range.second());
 			if (t < 3e-3)
 			{
-				std::vector<real> data(static_cast<size_t>(range.second));
+				std::vector<real> data(size);
 				rn = std::log(rn);
 				rm = std::log(rm);
-				real delta = (rm - rn) / range.second;
-				for (small_int i = 0; i < range.second; i++)
+				real delta = (rm - rn) / size;
+				for (size_t i = 0; i < size; i++)
 					values.push_back(rn + i * delta);
 			}
-			else if (range.second < 32)
+			else if (size < 32)
 				build_sieving_range_exact(range, values);
 			else
 			{
@@ -755,8 +861,7 @@ namespace zn
 			try
 			{
 				auto range = ranges_to_sieve_.pop();
-				for (; range.second != 0; range = ranges_to_sieve_.pop())
-
+				for (; range.second() != 0; range = ranges_to_sieve_.pop())
 					smooths_found_.push(sieve_range(range));
 			}
 			catch (std::exception &exc)
