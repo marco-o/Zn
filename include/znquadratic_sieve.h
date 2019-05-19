@@ -17,7 +17,6 @@
 #include <map>
 #include "znqueue.h"
 
-#define HAVE_MULTIPLE
 
 namespace zn
 {
@@ -135,35 +134,21 @@ namespace zn
 				large_int a = 1;
 				large_int b = 0;
 				large_int c = -m;
-#ifdef HAVE_MULTIPLE
-				for (size_t i = 0; i < p.size(); i++)
-#endif
+				sieve_range_t rangep(size, m, c, b, a);
+				ranges_[rangep.mid_value()] = rangep;
+				sieve_range_t rangen = rangep.negate();
+				ranges_[rangen.mid_value()] = rangen;
+				/*
+					* Small check
+					*/
+				large_int y0 = rangep.eval(0);
+				large_int y1 = rangep.eval(-1);
+				if (y0 < 0 || y1 > 0)
 				{
-					sieve_range_t rangep(size, m, c, b, a);
-					ranges_[rangep.mid_value()] = rangep;
-					sieve_range_t rangen = rangep.negate();
-					ranges_[rangen.mid_value()] = rangen;
-					/*
-					 * Small check
-					 */
-					large_int y0 = rangep.eval(0);
-					large_int y1 = rangep.eval(-1);
-					if (y0 < 0 || y1 > 0)
-					{
-						std::cout << "Wrong range at a = " << a << ":\n" 
-								  << "y0 = " << y0 << "\n" 
-								  << "y1 = " << y1 << std::endl;
-						throw std::runtime_error("Polynomial root problem");
-					}
-#ifdef HAVE_MULTIPLE
-					a = p[i].first;
-					b = p[i].second;
-					c = b * b - m;
-					if (c % a != 0)
-						std::cout << "Hmmmm\n";
-					c = c / a;
-					b *= 2;
-#endif
+					std::cout << "Wrong range at a = " << a << ":\n" 
+								<< "y0 = " << y0 << "\n" 
+								<< "y1 = " << y1 << std::endl;
+					throw std::runtime_error("Polynomial root problem");
 				}
 			}
 			sieve_range_t next(void)

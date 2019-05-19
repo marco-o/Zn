@@ -20,6 +20,7 @@
 #include "znquadratic_residue.h"
 #include "znquadratic_sieve0.h"
 #include "znquadratic_sieve.h"
+#include "znmpqs.h"
 
 #ifdef HAVE_BOOST
 using namespace boost::multiprecision;
@@ -40,6 +41,14 @@ template <class large_int, class small_int = int>
 void test_quadratic_sieve(const large_int &n, small_int base_size)
 {
 	auto p1 = quadratic_sieve(n, base_size);
+	auto p2 = n / p1;
+	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+}
+
+template <class large_int, class small_int = int>
+void test_multiple_polynomial_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size)
+{
+	auto p1 = multiple_polynomial_quadratic_sieve(n, m, base_size);
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
@@ -181,6 +190,10 @@ int main(int argc, char *argv[])
 				test_quadratic_sieve0<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--qsc") == 0)
 				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
+			else if (strcmp(argv[i], "--mpqs") == 0)
+				test_multiple_polynomial_quadratic_sieve<cpp_int, long long>(cpp_int(n), cpp_int(m1), base_size);
+			else if (strcmp(argv[i], "--mpqsl") == 0)
+				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 #ifdef HAVE_GMP
 			else if (strcmp(argv[i], "--qsg") == 0)
 				test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
