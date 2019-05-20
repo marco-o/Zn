@@ -219,16 +219,73 @@ namespace zn
 			idx.push_back(2);
 			polynomial_t p(idx, base_, n_);
 			p.zeros();
+			sieve(p);
 			return 1;
 		}
 	private:
 		void sieve(const polynomial_t &poly)
 		{
 			// build vector for sieving
+			std::vector<real> values(safe_cast<size_t>(2 * m_));
+			auto zeros = poly.zeros();
+			fill_range(poly, values, -m_, zeros.first);
+			fill_range(poly, values, zeros.first, zeros.second);
+			fill_range(poly, values, zeros.second, m_);
 
 			// use the base for sieving
 
 			// collect smooth numbers
+		}
+		void fill_range(const polynomial_t &poly, 
+			            std::vector<real> &values, 
+			            const large_int &begin, 
+			            const large_int &end)
+		{
+			large_int mid = (begin + end) / 2;
+			large_int y_1 = poly.eval(begin);
+			large_int y0  = poly.eval(mid);
+			large_int y1  = poly.eval(end - 1);
+			real t_1 = std::abs(safe_cast<real>(y_1));
+			real t0 = std::abs(safe_cast<real>(y0));
+			real t1 = std::abs(safe_cast<real>(y1));
+			real q1 = t_1 / t0 ;
+			real q0 = t0 / t1 ;
+			real t = q1 / q0 + q0 / q1 - 2;
+			if (t < 0.1)
+			{
+				fill_linear(values, begin, y_1, mid, y0);
+				fill_linear(values, mid, y0, end, y1);
+			}
+			else 
+				if (end - begin < 32)
+					fill_exact(poly, values, begin, end);
+				else
+				{
+					fill_range(poly, values, begin, mid);
+					fill_range(poly, values, mid, end);
+				}
+		}
+		void fill_linear(std::vector<real> &values, 
+			             const large_int &x1, const large_int &y1, 
+			             const large_int &x2, const large_int &y2)
+		{
+			size_t size = safe_cast<size_t>(x2 - x1);
+			size_t offset = safe_cast<size_t>(x1 + m_);
+			real t1 = std::log(std::abs(safe_cast<real>(y1)));
+			real t2 = std::log(std::abs(safe_cast<real>(y2)));
+			real m = (t2 - t1) / size;
+			for (size_t i = 0; i < size; i++)
+				values[i + offset] = t1 + m * i;
+		}
+		void fill_exact(const polynomial_t &poly, std::vector<real> &values, large_int begin, large_int end)
+		{
+			size_t size = safe_cast<size_t>(end - begin);
+			size_t offset = safe_cast<size_t>(begin + m_);
+			for (size_t i = 0; i < size; i++)
+			{
+				auto y = poly.eval(begin + i);
+				values[offset + i] = std::log(std::abs(safe_cast<real>(y)));
+			}
 		}
 		real						 sieve_thrs_;
 		large_int					 smooth_thrs_; // square of last element of base
