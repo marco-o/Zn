@@ -16,83 +16,11 @@
 #include <list>
 #include <map>
 #include "znqueue.h"
-
+#include "znquadratic_sieve_base.h"
 
 namespace zn
 {
-	template <class large_int, class small_int, class real>
-	class quadratic_sieve_base_t
-	{
-	public:
-		struct base_t
-		{
-			std::vector<small_int>	prime;
-			std::vector<small_int>	residue; // quadratic residue
-			real					logp;
-			base_t(small_int p) : logp(static_cast<real>(-std::log(p)))
-			{
-			}
-			bool valid_for_polynomial(void) const { return prime.size() > 1; }
-			small_int prime1(void) const
-			{
-				return prime[0];
-			}
-			small_int prime2(void) const
-			{
-				return prime[1];
-			}
-			small_int residue2(void) const
-			{
-				return residue[1];
-			}
-			base_t operator-(void) const
-			{
-				base_t result = *this;
-				result.residue = prime - residue;
-				return result;
-			}
-			bool eval_residue(const large_int &n)
-			{
-				large_int n1 = n % prime;
-				residue = static_cast<small_int>(quadratic_residue<large_int>(n1, prime, prime / prime0)); // actually a power of prime
-				return residue != 0;
-			}
-			static base_t build(small_int prime, const large_int &n)
-			{
-				base_t result(prime);
-				small_int prime_pwr = prime;
-				small_int prime1 = 1;
-				small_int prime_power_end = static_cast<small_int>(std::numeric_limits<int>::max() / prime);
-				for (int i = 0; (i < 10) && (prime_pwr < prime_power_end); i++)
-				{
-					small_int n1 = safe_cast<small_int>(n % prime_pwr);
-					small_int residue = quadratic_residue<small_int>(n1, prime_pwr, prime1); // actually a power of prime
-					if (residue == 0)
-						break;
-					result.prime.push_back(prime_pwr);
-					if (residue > prime_pwr / 2)
-						residue = prime_pwr - residue;
-					result.residue.push_back(residue);
-					// what about employ some kind of lifting?
-					prime1 = prime_pwr;
-					prime_pwr *= prime;
-				}
-				return result;
-			}
-		};
-		//
-		// this function does an approximate reverse of estimation
-		// of prime numbers pi(n) = n / log(n)
-		//
-		static small_int primes_range(small_int base_size)
-		{
-			double result = static_cast<double>(base_size);
-			for (int i = 0; i < 10; i++)
-				result = base_size * std::log(result);
-			return static_cast<small_int>(result);
-		}
 
-	};
 
 
 	template <class large_int, class small_int, class real>
@@ -102,16 +30,9 @@ namespace zn
 		typedef long long long_t;
 		typedef unsigned int slot_t;
 		enum {bits_per_slot = 8 * sizeof(slot_t) };
-		struct base_ref_t : public base_t
-		{
-			base_ref_t(const base_t &base) : base_t(base) {}
-
-			std::vector<int> smooths; // indexes
-
-		};
 		struct polynomial_t
 		{
-			std::vector<int> index; // base used for the polinomial
+			std::vector<int> index; // base used for the polynomial
 			large_int a;
 			large_int b;
 			large_int c;
@@ -122,14 +43,14 @@ namespace zn
 			{
 				large_int r = 0;
 				const base_ref_t &bp0 = base[idx[0]];
-				a = bp0.prime2();
-				b = bp0.residue2();
+				a = bp0.prime(1);
+				b = bp0.residue(1);
 				size_t index_count = index.size();
 				for (size_t i = 1 ; i < index_count ; i++)
 				{
 					const base_ref_t &bp = base[idx[i]];
-					large_int g = bp.prime2();
-					large_int db = (bp.residue2()- b);
+					large_int g = bp.prime(1);
+					large_int db = (bp.residue(1)- b);
 					auto ext = extended_euclidean_algorithm(a, g);
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 					if (std::get<0>(ext) != 1)
@@ -152,7 +73,7 @@ namespace zn
 
 			large_int eval(const large_int &x) const
 			{
-				large_int x1 = a *x + 2 * b;
+				large_int x1 = a * x + 2 * b;
 				return x1 * x + c;
 			}
 			// polynomial is negative in the range of the roots, including bounds
@@ -174,7 +95,125 @@ namespace zn
 				return std::make_pair(x1, x2);
 			}
 		};
-		enum smooth_status_e{ smooth_idle_e, smooth_valid_e, smooth_candidate_e };
+		class smooth_t
+		{
+		public:
+			smooth_t(void) : n(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
+
+			smooth_t(const polynomial_t &poly,
+					small_int x,
+					const large_int &thrs,
+					const std::vector<base_ref_t> &base) : sqr(1), sign_bit(false)
+			{
+				n = poly.a * x + poly.b ;
+				f = poly.eval(x);
+				if (f < 0)
+				{
+					f = -f;
+					sign_bit = true;
+				}
+				size_t base_size = base.size();
+				for (size_t j = 0; j < base_size; j++)
+				{
+					const auto &b = base[j];
+					int rexp = 0;
+					large_int p = b.prime(0);
+					int power = 0;
+					while (divide_qr1(f, p))
+						if (++power % 2 == 0)
+							sqr = (sqr * p) % poly.n;
+					if (power & 1)
+						factors_.push_back(static_cast<int>(j));
+				}
+				if (f == 1)
+					s = smooth_valid_e;
+				else if (f < thrs)
+					s = smooth_candidate_e;
+				else
+					s = smooth_idle_e;
+			}
+			smooth_status_e type(void) const { return s; }
+			bool square(void) const { return factors_.empty(); }
+			bool sign_neg(void) const { return sign_bit; }
+			large_int reminder(void) const { return f; }
+			const std::vector<int>	&factors(void) const { return factors_; }
+			void invalidate(void) { s = smooth_idle_e; }
+			large_int result(const large_int &m)
+			{
+				large_int a = gcd(m, n + sqr);
+				if (a != 1 && a != m)
+					return a;
+				large_int b = (n > sqr ? n - sqr : sqr - n);
+				return gcd(b, m);
+			}
+			void compose(const smooth_t &rhs, const large_int &m, const std::vector<base_ref_t> &base)
+			{
+				n = (n * rhs.n) % m;
+				sqr = (sqr * rhs.sqr) % m;
+				//temp_r = (temp_r * rhs.temp_r) % m;
+				if (rhs.f == f)
+				{
+					sqr = (sqr * f) % m;
+					f = 1;
+				}
+
+				sign_bit ^= rhs.sign_bit;
+				std::vector<int>		fact;
+				auto it1 = factors_.begin();
+				auto end1 = factors_.end();
+				auto it2 = rhs.factors_.begin();
+				auto end2 = rhs.factors_.end();
+				while (it1 != end1 && it2 != end2)
+				{
+					if (*it1 < *it2)
+						fact.push_back(*it1++);
+					else if (*it1 > *it2)
+						fact.push_back(*it2++);
+					else // same factor; gets skipped!
+					{
+						sqr = (sqr * base[*it1].prime(0)) % m;
+						++it1;
+						++it2;
+					}
+				}
+				if (it1 != end1)
+					fact.insert(fact.end(), it1, end1);
+				if (it2 != end2)
+					fact.insert(fact.end(), it2, end2);
+				factors_ = fact;
+				s = smooth_valid_e;
+			}
+			void remap_factors(const std::vector<int> &fmap)
+			{
+				for (auto &idx : factors_)
+				{
+					idx = fmap[idx];
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
+					if (idx < 0)
+						std::cout << "Factor has been removed...\n";
+#endif
+				}
+			}
+			bool invariant(const large_int &n, const std::vector<base_ref_t> &base) const
+			{
+				large_int s1 = (sqr * sqr * f) % n;
+				for (auto idx : factors_)
+					s1 = (s1 * base[idx].prime) % n;
+				if (sign_bit)
+					s1 = -s1;
+				s1 = (s1 - n * n) % m;
+				return s1 == 0;
+			}
+		private:
+			std::vector<int>		factors_;
+			large_int				f; // remainder after trial division
+			large_int				n;
+			large_int				sqr;
+			bool					sign_bit; // true if negative
+			smooth_status_e			s;
+		};
+		typedef std::map<large_int, smooth_t> candidates_map_t;
+		typedef std::vector<smooth_t> smooth_vector_t;
 
 		multiple_polynomial_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size) : n_(n), m_(m)
 		{
@@ -194,10 +233,10 @@ namespace zn
 			for (auto p : primes)
 			{
 				base_t base = base_t::build(p, n);
-				if (base.prime.size() > 0)
+				if (base.prime_.size() > 0)
 					base_.push_back(base);
 			}
-			small_int largest_sieving_prime = base_.rbegin()->prime[0];
+			small_int largest_sieving_prime = base_.rbegin()->prime(0);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Actual base size: " << base_.size() << ", largest = " << largest_sieving_prime << std::endl;
 #endif // DBG_SIEVE	
@@ -205,7 +244,7 @@ namespace zn
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
 			if (m_ == 0)
-				m_ = large_int(largest_sieving_prime) * 5;
+				m_ = largest_sieving_prime * 5;
 		}
 		large_int process(void)
 		{
@@ -219,11 +258,17 @@ namespace zn
 			idx.push_back(2);
 			polynomial_t p(idx, base_, n_);
 			p.zeros();
-			sieve(p);
+			auto chunk = sieve(p);
+
+			candidates_map_t candidates;
+			smooth_vector_t smooths;
+			process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+			erase_base(base_, smooths);
+
 			return 1;
 		}
 	private:
-		void sieve(const polynomial_t &poly)
+		smooth_vector_t sieve(const polynomial_t &poly)
 		{
 			// build vector for sieving
 			std::vector<real> values(safe_cast<size_t>(2 * m_));
@@ -233,8 +278,69 @@ namespace zn
 			fill_range(poly, values, zeros.second, m_);
 
 			// use the base for sieving
-
-			// collect smooth numbers
+			sieve_values(poly, values);
+			//std::sort(values.begin(), values.end());
+			return collect_smooth(poly, values);
+		}
+		smooth_vector_t  collect_smooth(const polynomial_t &poly,
+											const std::vector<real> &values)
+		{
+			std::vector<smooth_t> result;
+			real sieve_thrs = -2 * base_.rbegin()->logp_;
+			large_int largest_prime = base_.rbegin()->prime(0);
+			size_t size = values.size();
+			for (size_t i = 0; i < size; i++)
+				if (values[i] < sieve_thrs)
+				{
+					smooth_t s(poly, i - m_, largest_prime * largest_prime, base_);
+					if (s.type() != smooth_idle_e)
+						result.push_back(s);
+				}
+			return result;
+		}
+		void sieve_values(const polynomial_t &poly, std::vector<real> &values)
+		{
+			small_int size = values.size();
+			for (const auto &base : base_)
+			{
+				size_t powers = base.powers();
+				real logp = base.logp();
+				for (size_t i = 0; i < powers; i++)
+				{
+					small_int prime = base.prime(i);
+					small_int residue = base.residue(i);
+					small_int a = safe_cast<small_int>(poly.a % prime);
+					if (a == 0)
+						break; // we are hitting a divisor of a
+					small_int b = safe_cast<small_int>(poly.b % prime);
+					small_int a1 = std::get<1>(extended_euclidean_algorithm<small_int>(a, prime));
+					small_int x = ((prime - b + residue) * a1) % prime;
+#if DBG_SIEVE >= DBG_SIEVE_TRACE
+					large_int y = poly.eval(x);
+					small_int x0 = safe_cast<small_int>(y % prime);
+					if (x0 != 0)
+						throw std::runtime_error("Sieving with wrong offset");
+#endif // DBG_SIEVE	
+					// here x = 0 maps to values[m_], so x -= (m_ % prime) * prime
+					size_t p1 = static_cast<size_t>(prime);
+					size_t index = static_cast<size_t>(m_ + x) % p1 ;
+#if 0 // DBG_SIEVE >= DBG_SIEVE_TRACE
+					large_int y1 = poly.eval(index - m_);
+					real t1 = std::log(std::abs(safe_cast<real>(y1)));
+					if (abs(t1 - values[index]) > 1e-5)
+						throw std::runtime_error("Something wrong in sieving");
+#endif // DBG_SIEVE	
+					for (size_t i = index; i < size; i += p1)
+						values[i] += logp;
+					if (prime != 2)
+					{
+						x = ((2 * prime - b - residue) * a1) % prime;
+						index = static_cast<size_t>(m_ + x) % p1;
+						for (size_t i = index; i < size; i += p1)
+							values[i] += logp;
+					}
+				}
+			}
 		}
 		void fill_range(const polynomial_t &poly, 
 			            std::vector<real> &values, 
@@ -290,7 +396,7 @@ namespace zn
 		real						 sieve_thrs_;
 		large_int					 smooth_thrs_; // square of last element of base
 		large_int					 n_; // number to factor
-		large_int					 m_; // size of sieving interval
+		small_int					 m_; // size of sieving interval
 		std::vector<base_ref_t>		 base_;
 	};
 
