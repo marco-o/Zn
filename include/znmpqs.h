@@ -33,7 +33,8 @@ namespace zn
 		struct polynomial_t
 		{
 			std::vector<int> index; // base used for the polynomial
-			large_int a;
+			large_int a0; 
+			large_int a;  // a = a0 * a0
 			large_int b;
 			large_int c;
 			large_int n;
@@ -43,12 +44,14 @@ namespace zn
 			{
 				large_int r = 0;
 				const base_ref_t &bp0 = base[idx[0]];
+				a0 = bp0.prime(0);
 				a = bp0.prime(1);
 				b = bp0.residue(1);
 				size_t index_count = index.size();
 				for (size_t i = 1 ; i < index_count ; i++)
 				{
 					const base_ref_t &bp = base[idx[i]];
+					a0 *= bp.prime(0);
 					large_int g = bp.prime(1);
 					large_int db = (bp.residue(1)- b);
 					auto ext = extended_euclidean_algorithm(a, g);
@@ -98,14 +101,14 @@ namespace zn
 		class smooth_t
 		{
 		public:
-			smooth_t(void) : n(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
+			smooth_t(void) : axb(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
 
 			smooth_t(const polynomial_t &poly,
 					small_int x,
 					const large_int &thrs,
-					const std::vector<base_ref_t> &base) : sqr(1), sign_bit(false)
+					const std::vector<base_ref_t> &base) : sqr(poly.a0), sign_bit(false)
 			{
-				n = poly.a * x + poly.b ;
+				axb = poly.a * x + poly.b ;
 				f = poly.eval(x);
 				if (f < 0)
 				{
@@ -138,22 +141,22 @@ namespace zn
 			large_int reminder(void) const { return f; }
 			const std::vector<int>	&factors(void) const { return factors_; }
 			void invalidate(void) { s = smooth_idle_e; }
-			large_int result(const large_int &m)
+			large_int result(const large_int &n)
 			{
-				large_int a = gcd(m, n + sqr);
-				if (a != 1 && a != m)
+				large_int a = gcd(n, axb + sqr);
+				if (a != 1 && a != n)
 					return a;
-				large_int b = (n > sqr ? n - sqr : sqr - n);
-				return gcd(b, m);
+				large_int b = (axb > sqr ? axb - sqr : sqr - axb);
+				return gcd(b, n);
 			}
-			void compose(const smooth_t &rhs, const large_int &m, const std::vector<base_ref_t> &base)
+			void compose(const smooth_t &rhs, const large_int &n, const std::vector<base_ref_t> &base)
 			{
-				n = (n * rhs.n) % m;
-				sqr = (sqr * rhs.sqr) % m;
+				axb = (axb * rhs.axb) % n;
+				sqr = (sqr * rhs.sqr) % n;
 				//temp_r = (temp_r * rhs.temp_r) % m;
 				if (rhs.f == f)
 				{
-					sqr = (sqr * f) % m;
+					sqr = (sqr * f) % n;
 					f = 1;
 				}
 
@@ -171,7 +174,7 @@ namespace zn
 						fact.push_back(*it2++);
 					else // same factor; gets skipped!
 					{
-						sqr = (sqr * base[*it1].prime(0)) % m;
+						sqr = (sqr * base[*it1].prime(0)) % n;
 						++it1;
 						++it2;
 					}
@@ -198,17 +201,17 @@ namespace zn
 			{
 				large_int s1 = (sqr * sqr * f) % n;
 				for (auto idx : factors_)
-					s1 = (s1 * base[idx].prime) % n;
+					s1 = (s1 * base[idx].prime(0)) % n;
 				if (sign_bit)
 					s1 = -s1;
-				s1 = (s1 - n * n) % m;
+				s1 = (s1 - axb * axb) % n;
 				return s1 == 0;
 			}
 		private:
 			std::vector<int>		factors_;
 			large_int				f; // remainder after trial division
-			large_int				n;
-			large_int				sqr;
+			large_int				sqr; // product of prime with even exponents (/ 2)
+			large_int				axb;// a *x + b, thenumber squared
 			bool					sign_bit; // true if negative
 			smooth_status_e			s;
 		};
@@ -264,18 +267,55 @@ namespace zn
 			smooth_vector_t smooths;
 			process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 			erase_base(base_, smooths);
-
-			return 1;
+			linear_solver_t solver;
+			auto basemix = solver.solve(smooths, base_.size() + 1);
+			return build_solution(smooths, basemix);
 		}
 	private:
+		large_int  build_solution(const smooth_vector_t &smooths,
+								  const std::vector<std::vector<int>> &basemix)
+		{
+			int failed = 0;
+			large_int r = 1;
+			for (auto &item : basemix)
+			{
+				smooth_t s;
+				for (auto index : item)
+					s.compose(smooths[index], n_, base_);
+#if DBG_SIEVE >= DBG_SIEVE_WARNING
+				if (!s.square())
+					std::cout << "Non null factors!\n";
+				if (!s.invariant(n_, base_))
+					std::cout << "Hmmmm";
+#endif // DBG_SIEVE	
+				r = s.result(n_);
+				if (r != 1 && r != n_)
+					break;
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+				else
+					failed++;
+#endif // DBG_SIEVE	
+			}
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+			if (failed > 0)
+				std::cout << "Failed " << failed << " attempts\n";
+#endif // DBG_SIEVE	
+
+			return r;
+		}
 		smooth_vector_t sieve(const polynomial_t &poly)
 		{
 			// build vector for sieving
 			std::vector<real> values(safe_cast<size_t>(2 * m_));
 			auto zeros = poly.zeros();
-			fill_range(poly, values, -m_, zeros.first);
-			fill_range(poly, values, zeros.first, zeros.second);
-			fill_range(poly, values, zeros.second, m_);
+			if (-m_ < zeros.first)
+			{
+				fill_range(poly, values, -m_, zeros.first);
+				fill_range(poly, values, zeros.first, zeros.second);
+				fill_range(poly, values, zeros.second, m_);
+			}
+			else // enters here only during tests
+				fill_range(poly, values, -m_, m_);
 
 			// use the base for sieving
 			sieve_values(poly, values);
@@ -294,7 +334,13 @@ namespace zn
 				{
 					smooth_t s(poly, i - m_, largest_prime * largest_prime, base_);
 					if (s.type() != smooth_idle_e)
+					{
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+						if (!s.invariant(n_, base_))
+							std::cout << "Hm\n";
+#endif // DBG_SIEVE	
 						result.push_back(s);
+					}
 				}
 			return result;
 		}
@@ -412,6 +458,6 @@ namespace zn
 		return qs.process();
 	}
 
-}
+};
 
 #endif
