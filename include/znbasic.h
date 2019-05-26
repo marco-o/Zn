@@ -80,7 +80,7 @@ namespace zn
 		static const int cores(void)
 		{
 #ifdef HAVE_THREADING
-			return std::thread::hardware_concurrency();
+			return std::thread::hardware_concurrency() ;
 #else
 			return 1;
 #endif

@@ -31,7 +31,7 @@ namespace zn
 				base_t result(prime);
 				small_int prime_pwr = prime;
 				small_int prime1 = 1;
-				small_int prime_power_end = static_cast<small_int>(std::numeric_limits<int>::max() / prime);
+				small_int prime_power_end = static_cast<small_int>(std::numeric_limits<int>::max());
 				for (int i = 0; (i < 10) && (prime_pwr < prime_power_end); i++)
 				{
 					small_int n1 = safe_cast<small_int>(n % prime_pwr);
