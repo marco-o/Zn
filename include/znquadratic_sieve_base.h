@@ -67,6 +67,14 @@ namespace zn
 			}
 			ref.invalidate();
 		}
+		static size_t actual_base_size(std::vector<base_ref_t> &base)
+		{
+			size_t result = 0;
+			for (const auto &item : base)
+				if (!item.smooths.empty())
+					result++;
+			return result;
+		}
 		template <class smooth_t>
 		void erase_base(std::vector<base_ref_t> &base, std::vector<smooth_t> &smooths)
 		{

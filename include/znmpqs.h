@@ -294,17 +294,17 @@ namespace zn
 			sieve_thrs_ = safe_cast<real>(std::log(largest_sieving_prime) * 2);
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
-			if (m_ == 0)
-				m_ = largest_sieving_prime * 5;
+			if (m_ < sqrt(largest_sieving_prime))
+				m_ = largest_sieving_prime * 2;
 		}
 		large_int process(void)
 		{
 			candidates_map_t candidates;
 			smooth_vector_t smooths;
 			build_polynomials();
-			size_t smooths_required = base_.size() + 5 + base_.size() / 100;
 			int count = 0;
-			while (smooths.size() < smooths_required)
+			size_t actual_bsize = 0;
+			while (smooths.size() < actual_bsize + 5 + actual_bsize / 100)
 			{
 #ifdef HAVE_THREADING
 				auto chunk = smooths_found_.pop();
@@ -320,8 +320,9 @@ namespace zn
 #endif
 				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
+				actual_bsize = actual_base_size(base_);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
-				std::cout << count << ". Sieving.. " << smooths.size() << ", candidates " << candidates.size() << "\r" << std::flush;
+				std::cout << count << ". Sieving.. " << smooths.size() << ", candidates " << candidates.size() << ", base = " << actual_bsize << "\r" << std::flush;
 #endif
 			}
 #ifdef HAVE_THREADING
@@ -331,6 +332,7 @@ namespace zn
 				polynomials_.push(polynomial_seed_t());
 			for (auto &thread : threads_)
 				thread.join();
+			base_analysis(smooths);
 			// pick remaining smooths
 			while (!smooths_found_.empty())
 			{
@@ -341,9 +343,9 @@ namespace zn
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << std::endl;
 #endif
-			if (smooths.size() < base_.size())
+			if (smooths.size() < actual_bsize)
 			{
-#if DBG_SIEVE >= DBG_SIEVE_ERROR
+#if 1 // DBG_SIEVE >= DBG_SIEVE_ERROR
 				std::cout << "Found only " << smooths.size() << std::endl;
 #endif
 				return 1;
