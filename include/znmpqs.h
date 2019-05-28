@@ -30,45 +30,14 @@ namespace zn
 		struct polynomial_seed_t
 		{
 			std::vector<int> index; // base used for the polynomial
-			real quality;
-			polynomial_seed_t(void) : quality(-1) {}
-			bool is_null(void) const { return quality < -0.5; }
-			bool operator<(const polynomial_seed_t &rhs) const
-			{
-				return quality < rhs.quality;
-			}
+			real target_log;
+			polynomial_seed_t(void) : target_log(-1) {}
+			bool is_null(void) const { return target_log < -0.5; }
 		};
-		std::vector<polynomial_seed_t> generate(const std::vector<int> &index, real log1, real log2)
-		{
-			auto first = base_.begin();
-			auto last = base_.begin() + base_.size() - 1;
-			std::vector<polynomial_seed_t> result;
-			size_t size = index.size() + 2;
-			do
-			{
-				real loga = log1 - first->logp() - last->logp();
-				polynomial_seed_t seed;
-				seed.index = index;
-				seed.index.push_back(first - base_.begin());
-				seed.index.push_back(last - base_.begin());
-				std::sort(seed.index.begin(), seed.index.end());
-				for (size_t i = 1; i < size; i++)
-					if (seed.index[i - 1] == seed.index[i])
-						seed.quality = -1; // invalid
-				seed.quality = abs(loga - log2);
-				if (seed.quality < 0.5)
-					result.push_back(seed);
-				if (loga > log2) // select one smaller than last
-					last--;
-				else
-					first++;
-			} while (first != last);
-			return result;
-		}
 		struct polynomial_t
 		{
 			std::vector<int> index; // base used for the polynomial
-			large_int a0; 
+			large_int a0;
 			large_int a;  // a = a0 * a0
 			large_int b;
 			large_int c;
@@ -80,18 +49,18 @@ namespace zn
 				else
 					return quadratic_residue<large_int>(n, a2, a); // actually a power of prime
 			}
-			polynomial_t(const std::vector<int> &idx, 
-				         const std::vector<base_ref_t> &base,
-						 const large_int &n) : index(idx), valid(true)
+			polynomial_t(const std::vector<int> &idx,
+				const std::vector<base_ref_t> &base,
+				const large_int &n) : index(idx), valid(true)
 			{
 				large_int r = 0;
 				const base_ref_t &bp0 = base[idx[0]];
 				a0 = bp0.prime(0);
 				a = a0 * a0;
 				b = residue(bp0, a0, a, n);
-				valid = (b != 0) ;
+				valid = (b != 0);
 				size_t index_count = index.size();
-				for (size_t i = 1 ; valid && (i < index_count); i++)
+				for (size_t i = 1; valid && (i < index_count); i++)
 				{
 					const base_ref_t &bp = base[idx[i]];
 					large_int p1 = bp.prime(0);
@@ -100,13 +69,13 @@ namespace zn
 					large_int r1 = residue(bp, p1, g, n);
 					if (r1 == 0)
 						valid = false;
-					large_int db = (r1- b);
+					large_int db = (r1 - b);
 					auto ext = extended_euclidean_algorithm(a, g);
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 					if (std::get<0>(ext) != 1)
 						throw not_relatively_prime_t<large_int>(db, a);
 #endif
-					large_int h = (std::get<1>(ext) * db) % g ;
+					large_int h = (std::get<1>(ext) * db) % g;
 					b = b + h * a;
 					a *= g;
 					if (b > a / 2)
@@ -130,11 +99,11 @@ namespace zn
 			std::pair<large_int, large_int> zeros(const large_int &n) const
 			{
 				large_int d = safe_cast<large_int>(sqrt(n));
-				large_int x1 = (-b - d) / a ;
+				large_int x1 = (-b - d) / a;
 				large_int x2 = (-b + d) / a;
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 				large_int y1 = eval(x1 - 1);
-				large_int y0 = eval(x1 );
+				large_int y0 = eval(x1);
 				if (y1 < 0 || y0 > 0)
 					throw std::runtime_error("Error in finding x1");
 				y1 = eval(x2 + 1);
@@ -151,12 +120,12 @@ namespace zn
 			smooth_t(void) : axb(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
 
 			smooth_t(const polynomial_t &poly,
-					small_int x,
-					const large_int &thrs,
-					const large_int &n,
-					const std::vector<base_ref_t> &base) : sqr(poly.a0), sign_bit(false)
+				small_int x,
+				const large_int &thrs,
+				const large_int &n,
+				const std::vector<base_ref_t> &base) : sqr(poly.a0), sign_bit(false)
 			{
-				axb = poly.a * x + poly.b ;
+				axb = poly.a * x + poly.b;
 				f = poly.eval(x);
 				if (f < 0)
 				{
@@ -201,7 +170,6 @@ namespace zn
 			{
 				axb = (axb * rhs.axb) % n;
 				sqr = (sqr * rhs.sqr) % n;
-				//temp_r = (temp_r * rhs.temp_r) % m;
 				if (rhs.f == f)
 				{
 					sqr = (sqr * f) % n;
@@ -301,19 +269,34 @@ namespace zn
 		{
 			candidates_map_t candidates;
 			smooth_vector_t smooths;
-			build_polynomials();
+			polynomial_seed_t seed_index = build_polynomial_index();
+
+			for (int i = 0; i < 10000; i++)
+				generate_polynomial(seed_index);
+#ifdef HAVE_THREADING
+			int cores = system_info_t::cores();
+			for (int i = 0; i < cores - 1; i++)
+			{
+				threads_.emplace_back(&multiple_polynomial_quadratic_sieve_t::sieving_thread, this);
+				polynomials_.push(generate_polynomial(seed_index));
+				polynomials_.push(generate_polynomial(seed_index));
+			}
+#else
+				polynomials_.push_back(generate_polynomial(seed_index));
+#endif
+
 			int count = 0;
 			size_t actual_bsize = 0;
 			while (smooths.size() < actual_bsize + 5 + actual_bsize / 100)
 			{
 #ifdef HAVE_THREADING
 				auto chunk = smooths_found_.pop();
+				polynomials_.push(generate_polynomial(seed_index));
 #else
-				if (polynomials_.empty())
-					break;
-				auto seed = *polynomials_.begin();
+				auto item = *polynomials_.begin();
 				polynomials_.pop_front();
-				polynomial_t p(seed.index, base_, n_);
+				polynomials_.push_back(generate_polynomial(seed_index));
+				polynomial_t p(item.index, base_, n_);
 				if (!p.valid)
 					continue;
 				auto chunk = sieve(p);
@@ -326,13 +309,11 @@ namespace zn
 #endif
 			}
 #ifdef HAVE_THREADING
-			int cores = system_info_t::cores();
 			polynomials_.clear();
 			for (int i = 0; i < cores - 1; i++)
 				polynomials_.push(polynomial_seed_t());
 			for (auto &thread : threads_)
 				thread.join();
-			base_analysis(smooths);
 			// pick remaining smooths
 			while (!smooths_found_.empty())
 			{
@@ -407,7 +388,7 @@ namespace zn
 			return collect_smooth(poly, values);
 		}
 		smooth_vector_t  collect_smooth(const polynomial_t &poly,
-											const std::vector<real> &values)
+			const std::vector<real> &values)
 		{
 			std::vector<smooth_t> result;
 			real sieve_thrs = -2 * base_.rbegin()->logp_;
@@ -453,7 +434,7 @@ namespace zn
 #endif // DBG_SIEVE	
 					// here x = 0 maps to values[m_], so x -= (m_ % prime) * prime
 					size_t p1 = static_cast<size_t>(prime);
-					size_t index = static_cast<size_t>(m_ + x) % p1 ;
+					size_t index = static_cast<size_t>(m_ + x) % p1;
 #if 0 // DBG_SIEVE >= DBG_SIEVE_TRACE
 					large_int y1 = poly.eval(index - m_);
 					real t1 = std::log(std::abs(safe_cast<real>(y1)));
@@ -472,27 +453,27 @@ namespace zn
 				}
 			}
 		}
-		void fill_range(const polynomial_t &poly, 
-			            std::vector<real> &values, 
-			            const large_int &begin, 
-			            const large_int &end)
+		void fill_range(const polynomial_t &poly,
+			std::vector<real> &values,
+			const large_int &begin,
+			const large_int &end)
 		{
 			large_int mid = (begin + end) / 2;
 			large_int y_1 = poly.eval(begin);
-			large_int y0  = poly.eval(mid);
-			large_int y1  = poly.eval(end - 1);
+			large_int y0 = poly.eval(mid);
+			large_int y1 = poly.eval(end - 1);
 			real t_1 = std::abs(safe_cast<real>(y_1));
 			real t0 = std::abs(safe_cast<real>(y0));
 			real t1 = std::abs(safe_cast<real>(y1));
-			real q1 = t_1 / t0 ;
-			real q0 = t0 / t1 ;
+			real q1 = t_1 / t0;
+			real q0 = t0 / t1;
 			real t = q1 / q0 + q0 / q1 - 2;
 			if (t < 0.1)
 			{
 				fill_linear(values, begin, y_1, mid, y0);
 				fill_linear(values, mid, y0, end, y1);
 			}
-			else 
+			else
 				if (end - begin < 32)
 					fill_exact(poly, values, begin, end);
 				else
@@ -501,9 +482,9 @@ namespace zn
 					fill_range(poly, values, mid, end);
 				}
 		}
-		void fill_linear(std::vector<real> &values, 
-			             const large_int &x1, const large_int &y1, 
-			             const large_int &x2, const large_int &y2)
+		void fill_linear(std::vector<real> &values,
+			const large_int &x1, const large_int &y1,
+			const large_int &x2, const large_int &y2)
 		{
 			size_t size = safe_cast<size_t>(x2 - x1);
 			size_t offset = safe_cast<size_t>(x1 + m_);
@@ -523,45 +504,78 @@ namespace zn
 				values[offset + i] = std::log(std::abs(safe_cast<real>(y)));
 			}
 		}
-		void build_polynomials(void)
+		real compute_start_log(const polynomial_seed_t &seed)
+		{
+			size_t size = seed.index.size() - 2;
+			real start_log = 0;
+			for (size_t i = 0; i < size; i++)
+				start_log -= base_[seed.index[i]].logp();
+			return start_log;
+		}
+		polynomial_seed_t generate_polynomial(polynomial_seed_t &seed_index)
+		{
+			size_t size = seed_index.index.size() - 2;
+			int &first = seed_index.index[size];
+			int &last = seed_index.index[size + 1];
+			real start_log = compute_start_log(seed_index);
+			for ( ; ;)
+			{
+				polynomial_seed_t seed;
+				seed.index = seed_index.index;
+				seed.target_log = start_log - base_[first].logp() - base_[last].logp();
+				real quality = abs(seed.target_log - seed_index.target_log);
+				if (seed.target_log > seed_index.target_log) // select one smaller than last
+				{
+					real target = seed_index.target_log - seed.target_log - base_[last].logp();
+					last = std::lower_bound(base_.begin() + first, base_.begin() + last - 1, target,
+						[](const base_ref_t &base, real p)
+							{ return -base.logp() < p; }) - base_.begin();
+				}
+				else
+				{
+					real target = seed_index.target_log - seed.target_log - base_[first].logp();
+					first = std::lower_bound(base_.begin() + first + 1, base_.begin() + last, target,
+						[](const base_ref_t &b, real p)
+							{ return -b.logp() < p; }) - base_.begin();
+				}
+				if (first == last)
+				{
+					last = base_.size() - 1;
+					size_t i = size - 1;
+					for (; i > 0; i--)
+						if (seed_index.index[i] + 1 < seed_index.index[i + 1])
+							break;
+					seed_index.index[i]++;
+					for (i++ ; i <= size ; i++)
+						seed_index.index[i] = seed_index.index[i - 1] + 1;
+					start_log = compute_start_log(seed_index);
+				}
+				if (quality < 0.2)
+					return seed;
+			} 
+			return polynomial_seed_t();
+		}
+
+		polynomial_seed_t  build_polynomial_index(void)
 		{
 			large_int n1 = 2 * n_;
 			large_int a2 = safe_cast<large_int>(sqrt(n1)) / m_;
+			polynomial_seed_t result;
+
 			real loga = log(safe_cast<real>(a2)) / 2;
 			real factors = -loga / base_.rbegin()->logp();
-			std::vector<polynomial_seed_t> seeds;
-			if (factors < 1.8)
-				seeds = generate(std::vector<int>(), 0, loga);
-			else if (factors < 2.8)
-			{
-				real logp = loga / ceil(factors);
-				auto it = std::lower_bound(base_.begin(), base_.end(), logp, [](const base_ref_t &base, real p) {
-					return p > -base.logp();
-				});
-				for (int i = it - base_.begin(); seeds.size() < base_.size() * 3; i++)
-				{
-					std::vector<int> idx(1, i);
-					auto seeds3 = generate(idx, 0, log(safe_cast<real>(a2)) / 2 + it->logp());
-					seeds.insert(seeds.end(), seeds3.begin(), seeds3.end());
-				}
-			}
-			else
-				throw std::runtime_error("Three factors not enough");
-		
-			std::sort(seeds.begin(), seeds.end());
-#ifdef HAVE_THREADING
-			int cores = system_info_t::cores() - 1;
-			for (int i = 0; i < cores; i++)
-				threads_.emplace_back(&multiple_polynomial_quadratic_sieve_t::sieving_thread, this);
-			for (auto &seed : seeds)
-				polynomials_.push(seed);
-#else
-			for (auto &seed : seeds)
-				polynomials_.push_back(seed);
-#endif
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Polynomial seeds: " << seeds.size() << std::endl;
-#endif // DBG_SIEVE	
+			int order = static_cast<int>(ceil(factors + 0.5));
+			real logp = loga / static_cast<real>(order + 0.5);
+			auto it = std::lower_bound(base_.begin(), base_.end(), logp, [](const base_ref_t &base, real p) {
+				return p > -base.logp();
+			});
+			result.index.push_back(it - base_.begin());
+			for (int i = 1; i < order - 1; i++)
+				result.index.push_back(result.index[i - 1] + 1);
+			result.index.push_back(base_.size() - 1);
+
+			result.target_log = loga;
+			return result;
 		}
 #ifdef HAVE_THREADING
 		void sieving_thread(void)

@@ -62,7 +62,7 @@ namespace zn
 		return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
 	}
 
-#ifndef _DEBUG
+#if 1 //ndef _DEBUG
 #define HAVE_THREADING
 #endif
 
