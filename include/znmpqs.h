@@ -41,6 +41,11 @@ namespace zn
 			large_int a;  // a = a0 * a0
 			large_int b;
 			large_int c;
+			small_int x1;
+			small_int x2;
+			real z1;
+			real z2;
+			real loga;
 			bool valid;
 			mutable int evaluations_ = 0;
 			large_int residue(const base_ref_t &base, const large_int &a, const large_int &a2, const large_int &n)
@@ -51,8 +56,8 @@ namespace zn
 					return quadratic_residue<large_int>(n, a2, a); // actually a power of prime
 			}
 			polynomial_t(const std::vector<int> &idx,
-				const std::vector<base_ref_t> &base,
-				const large_int &n) : index(idx), valid(true)
+						 const std::vector<base_ref_t> &base,
+						 const large_int &n) : index(idx), valid(true)
 			{
 				large_int r = 0;
 				const base_ref_t &bp0 = base[idx[0]];
@@ -89,6 +94,7 @@ namespace zn
 #endif
 				}
 				c = (b * b - n) / a;
+				compute_zeros(n);
 			}
 
 			large_int eval(const large_int &x) const
@@ -99,15 +105,30 @@ namespace zn
 			}
 			real eval_log(small_int x) const
 			{
+#if 1
 				large_int y = abs(eval(x));
-				return std::log(std::abs(safe_cast<real>(y)));
+				return static_cast<real>(std::log(std::abs(safe_cast<double>(y))));
+#else
+				return loga + log(abs((x - z1) * (x - z2)) + 1);
+#endif
+			}
+			std::pair<small_int, small_int> zeros(void) const
+			{
+				return std::make_pair(x1, x2);
 			}
 			// polynomial is negative in the range of the roots, including bounds
-			std::pair<small_int, small_int> zeros(const large_int &n) const
+			void compute_zeros(const large_int &n)
 			{
+				double sqrn = sqrt(safe_cast<double>(n));
+				double da = safe_cast<double>(a);
 				large_int d = safe_cast<large_int>(sqrt(n));
-				small_int x1 = safe_cast<small_int>((-b - d) / a);
-				small_int x2 = safe_cast<small_int>((-b + d) / a);
+				double t1 = safe_cast<double>(-b - d) / da;
+				double t2 = safe_cast<double>(-b + d) / da;
+				x1 = safe_cast<small_int>((-b - d) / a);
+				x2 = safe_cast<small_int>((-b + d) / a);
+				z1 = static_cast<real>(t1);
+				z2 = static_cast<real>(t2);
+				loga = static_cast<real>(log(da));
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 				large_int y1 = eval(x1 - 1);
 				large_int y0 = eval(x1);
@@ -118,7 +139,6 @@ namespace zn
 				if (y1 < 0 || y0 > 0)
 					throw std::runtime_error("Error in finding x2");
 #endif
-				return std::make_pair(x1, x2);
 			}
 		};
 		class smooth_t
@@ -377,7 +397,7 @@ namespace zn
 		{
 			// build vector for sieving
 			std::vector<real> values(safe_cast<size_t>(2 * m_));
-			auto zeros = poly.zeros(n_);
+			auto zeros = poly.zeros();
 			if (-m_ < zeros.first)
 			{
 				real u = poly.eval_log(zeros.first);
@@ -388,16 +408,7 @@ namespace zn
 			}
 			else // enters here only during tests
 				fill_range(poly, values, -m_, poly.eval_log(-m_), m_, poly.eval_log(m_));
-#ifdef _DEBUG
-			for (int i = 0; i < 100; i++)
-			{
-				int x = rand() % (2 * m_) - m_ ;
-				real y1 = poly.eval_log(x);
-				real y2 = values[x + m_];
-				if (fabs(y1 - y2) > 0.4)
-					std::cout << "Hmm\n";
-			}
-#endif
+
 			// use the base for sieving
 			sieve_values(poly, values);
 			return collect_smooth(poly, values);
@@ -487,7 +498,7 @@ namespace zn
 				fill_linear(values, mid, t0, end, t1);
 			}
 			else
-				if (end - begin < 8)
+				if (end - begin < 16)
 					fill_exact(poly, values, begin, end);
 				else
 				{
