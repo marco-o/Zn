@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
 			else if (strcmp(argv[i], "--qsc") == 0)
 				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--mpqs") == 0)
-				test_multiple_polynomial_quadratic_sieve<int512_t, long long>(int512_t(n), int512_t(m1), base_size);
+				test_multiple_polynomial_quadratic_sieve<cpp_int, long long>(cpp_int(n), cpp_int(m1), base_size);
 			else if (strcmp(argv[i], "--mpqsl") == 0)
 				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 #ifdef HAVE_GMP

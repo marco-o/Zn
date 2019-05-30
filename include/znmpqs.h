@@ -97,12 +97,17 @@ namespace zn
 				large_int x1 = a * x + 2 * b;
 				return x1 * x + c;
 			}
+			real eval_log(small_int x) const
+			{
+				large_int y = abs(eval(x));
+				return std::log(std::abs(safe_cast<real>(y)));
+			}
 			// polynomial is negative in the range of the roots, including bounds
-			std::pair<large_int, large_int> zeros(const large_int &n) const
+			std::pair<small_int, small_int> zeros(const large_int &n) const
 			{
 				large_int d = safe_cast<large_int>(sqrt(n));
-				large_int x1 = (-b - d) / a;
-				large_int x2 = (-b + d) / a;
+				small_int x1 = safe_cast<small_int>((-b - d) / a);
+				small_int x2 = safe_cast<small_int>((-b + d) / a);
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 				large_int y1 = eval(x1 - 1);
 				large_int y0 = eval(x1);
@@ -375,13 +380,24 @@ namespace zn
 			auto zeros = poly.zeros(n_);
 			if (-m_ < zeros.first)
 			{
-				fill_range(poly, values, -m_, zeros.first);
-				fill_range(poly, values, zeros.first, zeros.second);
-				fill_range(poly, values, zeros.second, m_);
+				real u = poly.eval_log(zeros.first);
+				real v = poly.eval_log(zeros.second);
+				fill_range(poly, values, -m_, poly.eval_log(-m_), zeros.first, u);
+				fill_range(poly, values, zeros.first, u, zeros.second, v);
+				fill_range(poly, values, zeros.second, v, m_, poly.eval_log(m_));
 			}
 			else // enters here only during tests
-				fill_range(poly, values, -m_, m_);
-
+				fill_range(poly, values, -m_, poly.eval_log(-m_), m_, poly.eval_log(m_));
+#ifdef _DEBUG
+			for (int i = 0; i < 100; i++)
+			{
+				int x = rand() % (2 * m_) - m_ ;
+				real y1 = poly.eval_log(x);
+				real y2 = values[x + m_];
+				if (fabs(y1 - y2) > 0.4)
+					std::cout << "Hmm\n";
+			}
+#endif
 			// use the base for sieving
 			sieve_values(poly, values);
 			return collect_smooth(poly, values);
@@ -457,54 +473,44 @@ namespace zn
 		}
 		void fill_range(const polynomial_t &poly,
 						std::vector<real> &values,
-						const large_int &begin,
-						const large_int &end)
+						small_int begin, real t_1,
+						small_int end,   real t1)
 		{
-			large_int mid = (begin + end) / 2;
-			large_int y_1 = poly.eval(begin);
-			large_int y0 = poly.eval(mid);
-			large_int y1 = poly.eval(end - 1);
-			real t_1 = std::abs(safe_cast<real>(y_1));
-			real t0 = std::abs(safe_cast<real>(y0));
-			real t1 = std::abs(safe_cast<real>(y1));
+			small_int mid = (begin + end) / 2;
+			real t0 = poly.eval_log(mid);
 			real q1 = t_1 / t0;
 			real q0 = t0 / t1;
 			real t = q1 / q0 + q0 / q1 - 2;
-			if (t < 0.2)
+			if (t < 0.002)
 			{
-				fill_linear(values, begin, y_1, mid, y0);
-				fill_linear(values, mid, y0, end, y1);
+				fill_linear(values, begin, t_1, mid, t0);
+				fill_linear(values, mid, t0, end, t1);
 			}
 			else
 				if (end - begin < 8)
 					fill_exact(poly, values, begin, end);
 				else
 				{
-					fill_range(poly, values, begin, mid);
-					fill_range(poly, values, mid, end);
+					fill_range(poly, values, begin, t_1, mid, t0);
+					fill_range(poly, values, mid, t0, end, t1);
 				}
 		}
 		void fill_linear(std::vector<real> &values,
-			const large_int &x1, const large_int &y1,
-			const large_int &x2, const large_int &y2)
+						const small_int &x1, real t1,
+						const small_int &x2, real t2)
 		{
-			size_t size = safe_cast<size_t>(x2 - x1);
-			size_t offset = safe_cast<size_t>(x1 + m_);
-			real t1 = std::log(std::abs(safe_cast<real>(y1)));
-			real t2 = std::log(std::abs(safe_cast<real>(y2)));
+			size_t size	  = static_cast<size_t>(x2 - x1);
+			size_t offset = static_cast<size_t>(x1 + m_);
 			real m = (t2 - t1) / size;
 			for (size_t i = 0; i < size; i++)
 				values[i + offset] = t1 + m * i;
 		}
-		void fill_exact(const polynomial_t &poly, std::vector<real> &values, large_int begin, large_int end)
+		void fill_exact(const polynomial_t &poly, std::vector<real> &values, small_int begin, small_int end)
 		{
 			size_t size = safe_cast<size_t>(end - begin);
 			size_t offset = safe_cast<size_t>(begin + m_);
 			for (size_t i = 0; i < size; i++)
-			{
-				auto y = poly.eval(begin + i);
-				values[offset + i] = std::log(std::abs(safe_cast<real>(y)));
-			}
+				values[offset + i] = poly.eval_log(begin + i);
 		}
 		real compute_start_log(const polynomial_seed_t &seed)
 		{
