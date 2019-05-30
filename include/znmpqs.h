@@ -43,12 +43,8 @@ namespace zn
 			large_int c;
 			small_int x1;
 			small_int x2;
-			real z1;
-			real z2;
-			real loga;
 			bool valid;
-			mutable int evaluations_ = 0;
-			large_int residue(const base_ref_t &base, const large_int &a, const large_int &a2, const large_int &n)
+		large_int residue(const base_ref_t &base, const large_int &a, const large_int &a2, const large_int &n)
 			{
 				if (base.powers() > 1)
 					return base.residue(1);
@@ -99,7 +95,6 @@ namespace zn
 
 			large_int eval(const large_int &x) const
 			{
-				evaluations_++;
 				large_int x1 = a * x + 2 * b;
 				return x1 * x + c;
 			}
@@ -119,16 +114,9 @@ namespace zn
 			// polynomial is negative in the range of the roots, including bounds
 			void compute_zeros(const large_int &n)
 			{
-				double sqrn = sqrt(safe_cast<double>(n));
-				double da = safe_cast<double>(a);
 				large_int d = safe_cast<large_int>(sqrt(n));
-				double t1 = safe_cast<double>(-b - d) / da;
-				double t2 = safe_cast<double>(-b + d) / da;
 				x1 = safe_cast<small_int>((-b - d) / a);
 				x2 = safe_cast<small_int>((-b + d) / a);
-				z1 = static_cast<real>(t1);
-				z2 = static_cast<real>(t2);
-				loga = static_cast<real>(log(da));
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 				large_int y1 = eval(x1 - 1);
 				large_int y0 = eval(x1);
