@@ -21,8 +21,6 @@
 namespace zn
 {
 
-
-
 	template <class large_int, class small_int, class real>
 	class multiple_polynomial_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
 	{
@@ -102,7 +100,7 @@ namespace zn
 			{
 #if 1
 				large_int y = abs(eval(x));
-				return static_cast<real>(std::log(std::abs(safe_cast<double>(y))));
+				return real_op_t<real>::log1(y);
 #else
 				return loga + log(abs((x - z1) * (x - z2)) + 1);
 #endif
@@ -274,7 +272,7 @@ namespace zn
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Actual base size: " << base_.size() << ", largest = " << largest_sieving_prime << std::endl;
 #endif // DBG_SIEVE	
-			sieve_thrs_ = safe_cast<real>(std::log(largest_sieving_prime) * 2);
+			sieve_thrs_ = real_op_t<real>::log1(largest_sieving_prime * 2);
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
 			if (m_ < sqrt(largest_sieving_prime))
@@ -288,7 +286,7 @@ namespace zn
 
 #ifdef HAVE_THREADING
 			int cores = system_info_t::cores();
-			for (int i = 0; i < cores - 1; i++)
+			for (int i = 0; i < cores; i++)
 			{
 				threads_.emplace_back(&multiple_polynomial_quadratic_sieve_t::sieving_thread, this);
 				polynomials_.push(generate_polynomial(seed_index));
@@ -323,7 +321,7 @@ namespace zn
 			}
 #ifdef HAVE_THREADING
 			polynomials_.clear();
-			for (int i = 0; i < cores - 1; i++)
+			for (int i = 0; i < cores ; i++)
 				polynomials_.push(polynomial_seed_t());
 			for (auto &thread : threads_)
 				thread.join();
@@ -405,7 +403,7 @@ namespace zn
 										const std::vector<real> &values)
 		{
 			std::vector<smooth_t> result;
-			real sieve_thrs = -2 * base_.rbegin()->logp_ + 3 ; // small prime variation
+			real sieve_thrs = -2 * base_.rbegin()->logp_ + 1 * real_op_t<real>::unit() ; // small prime variation
 			large_int largest_prime = base_.rbegin()->prime(0);
 			large_int candidate_thrs = largest_prime * largest_prime ;
 			size_t size = values.size();
@@ -477,9 +475,9 @@ namespace zn
 		{
 			small_int mid = (begin + end) / 2;
 			real t0 = poly.eval_log(mid);
-			real q1 = t_1 / t0;
-			real q0 = t0 / t1;
-			real t = q1 / q0 + q0 / q1 - 2;
+			auto q1 = t_1 / static_cast<double>(t0);
+			auto q0 = static_cast<double>(t0) / t1;
+			auto t = q1 / q0 + q0 / q1 - 2;
 			if (t < 0.002)
 			{
 				fill_linear(values, begin, t_1, mid, t0);
@@ -500,9 +498,9 @@ namespace zn
 		{
 			size_t size	  = static_cast<size_t>(x2 - x1);
 			size_t offset = static_cast<size_t>(x1 + m_);
-			real m = (t2 - t1) / size;
+			double m = static_cast<double>(t2 - t1) / size;
 			for (size_t i = 0; i < size; i++)
-				values[i + offset] = t1 + m * i;
+				values[i + offset] = static_cast<real>(t1 + m * i);
 		}
 		void fill_exact(const polynomial_t &poly, std::vector<real> &values, small_int begin, small_int end)
 		{
@@ -580,7 +578,7 @@ namespace zn
 			large_int n1 = 2 * n_;
 			large_int a2 = safe_cast<large_int>(sqrt(n1)) / m_;
 			polynomial_seed_t result;
-			real loga = log(safe_cast<real>(a2)) / 2 ;
+			real loga = real_op_t<real>::log1(a2) / 2 ;
 			result.index.push_back(sc_first_base);
 			result.index.push_back(base_.size() - 1);
 

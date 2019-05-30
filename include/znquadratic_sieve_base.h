@@ -2,6 +2,28 @@
 #define quadratic_sieve_base_H
 namespace zn
 {
+	template <class real>
+	struct real_op_t
+	{
+		static real unit(void) { return 1; }
+		template <class T>
+		static real log1(T value)
+		{
+			return static_cast<real>(log(abs(safe_cast<double>(value))));
+		}
+	};
+
+	template <>
+	struct real_op_t<short>
+	{
+		static short unit(void) { return 120; }
+		template <class T>
+		static short log1(T value)
+		{
+			return static_cast<short>(unit() * safe_cast<double>(log(abs(safe_cast<double>(value)))));
+		}
+	};
+
 	template <class large_int, class small_int, class real>
 	class quadratic_sieve_base_t
 	{
@@ -12,7 +34,7 @@ namespace zn
 			std::vector<small_int>	prime_;
 			std::vector<small_int>	residue_; // quadratic residue
 			real					logp_;
-			base_t(small_int p) : logp_(static_cast<real>(-std::log(p)))
+			base_t(small_int p) : logp_(-real_op_t<real>::log1(p))
 			{
 			}
 			bool valid_for_polynomial(void) const { return prime_.size() > 1; }
