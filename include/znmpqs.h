@@ -342,6 +342,9 @@ namespace zn
 #endif
 				return 1;
 			}
+#ifdef HAVE_CANDIDATE_ANALYSYS
+			print_analysis(base_.rbegin()->prime(0));
+#endif
 			erase_base(base_, smooths);
 			linear_solver_t solver;
 			auto basemix = solver.solve(smooths, base_.size() + 1);
@@ -403,7 +406,7 @@ namespace zn
 										const std::vector<real> &values)
 		{
 			std::vector<smooth_t> result;
-			real sieve_thrs = -2 * base_.rbegin()->logp_ + 1 * real_op_t<real>::unit() ; // small prime variation
+			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit(); // small prime variation
 			large_int largest_prime = base_.rbegin()->prime(0);
 			large_int candidate_thrs = largest_prime * largest_prime ;
 			size_t size = values.size();

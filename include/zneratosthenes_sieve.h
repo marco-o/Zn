@@ -11,7 +11,7 @@
 #define eratosthenes_sieve_H
 
 #include <vector>
-
+#include <numeric>
 namespace zn
 {
     template <class T, class N = int, class Slot = unsigned int>

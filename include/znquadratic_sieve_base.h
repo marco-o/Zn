@@ -155,6 +155,12 @@ namespace zn
 					auto it = candidates.find(s.reminder());
 					if (it != candidates.end())
 					{
+#ifdef HAVE_CANDIDATE_ANALYSYS
+						size_t value = static_cast<size_t>(std::round(log(safe_cast<double>(s.reminder()))));
+						if (value >= composed_hist_.size())
+							composed_hist_.resize(value + 1);
+						composed_hist_[value]++;
+#endif
 						s.compose(it->second, n, base);
 #if DBG_SIEVE >= DBG_SIEVE_ERROR
 						if (!s.invariant(n, base))
@@ -163,6 +169,12 @@ namespace zn
 					}
 					else // just put it aside
 					{
+#ifdef HAVE_CANDIDATE_ANALYSYS
+						size_t value = static_cast<size_t>(std::round(log(safe_cast<double>(s.reminder()))));
+						if (value >= candidate_hist_.size())
+							candidate_hist_.resize(value + 1);
+						candidate_hist_[value]++;
+#endif
 						candidates[s.reminder()] = s;
 						continue;
 					}
@@ -184,7 +196,31 @@ namespace zn
 				result = base_size * std::log(result);
 			return static_cast<small_int>(result);
 		}
-
+#ifdef HAVE_CANDIDATE_ANALYSYS
+		void print_analysis(small_int largest_prime)
+		{
+			size_t size = candidate_hist_.size();
+			if (composed_hist_.size() < size)
+				composed_hist_.resize(size);
+			size_t begin = static_cast<size_t>(round(log(largest_prime))) - 1;
+			int candidates = std::accumulate(candidate_hist_.begin(), candidate_hist_.end(), 0);
+			int composed = std::accumulate(composed_hist_.begin(), composed_hist_.end(), 0);
+			int candidates1 = candidates;
+			int composed1 = composed;
+			std::cout << "Composed = " << composed << std::endl;
+			for (size_t i = begin; i < size; i++)
+			{
+				std::cout << candidate_hist_[i] << "  \t" 
+					      << (candidates1 * 100) / candidates << " \t"					       
+					      << composed_hist_[i] << "  \t" 
+						  << (composed1 * 100) / composed << std::endl ;
+				composed1 -= composed_hist_[i];
+				candidates1 -= candidate_hist_[i];
+			}
+		}
+		std::vector<int> candidate_hist_;
+		std::vector<int> composed_hist_;
+#endif
 	};
 
 	class linear_solver_t
