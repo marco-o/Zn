@@ -14,6 +14,7 @@
 #include "zngroup.h"
 #include "zneratosthenes_sieve.h"
 #include "znquadratic_residue.h"
+#include "znmpqs.h"
 
 #include <map>
 #include <string>
@@ -116,9 +117,31 @@ int find_large_composite(const param_map_t &params)
 	return 0;
 }
 
+template <class large_int>
+int run_multiple_polynomial_quadratic_sieve(const param_map_t &params)
+{
+	auto it = params.find("n");
+	if (it == params.end())
+		throw std::runtime_error("Missing parameter n (number to factor)");
+        large_int n = large_int(it->second.c_str()) ;
+	it = params.find("m");
+	if (it == params.end())
+		throw std::runtime_error("Missing parameter m (sieve interval)");
+        int m = atoi(it->second.c_str()) ;
+	it = params.find("n");
+	if (it == params.end())
+		throw std::runtime_error("Missing parameter base_size (number of prmes to use)");
+        int base_size = atoi(it->second.c_str()) ;
+	auto p1 = zn::multiple_polynomial_quadratic_sieve<large_int, std::int64_t, short>(n, m, base_size);
+	auto p2 = n / p1;
+	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+        return 0 ;
+}
+
 
 register_cmd_t next_prime(std::string("next-prime"), print_next_prime<large_int_t>);
 register_cmd_t large_composite(std::string("large-composite"), find_large_composite<large_int_t>);
+register_cmd_t mpqs(std::string("mpqs"), run_multiple_polynomial_quadratic_sieve<large_int_t>);
 
 int main(int argc, char *argv[])
 {

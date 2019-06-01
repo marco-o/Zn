@@ -25,6 +25,10 @@ namespace zn
 	class multiple_polynomial_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
 	{
 	public:
+                typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t ;
+                typedef typename inherit_t::base_ref_t base_ref_t ;
+                typedef typename inherit_t::smooth_status_e smooth_status_e;
+
 		struct polynomial_seed_t
 		{
 			std::vector<int> index; // base used for the polynomial
@@ -130,7 +134,7 @@ namespace zn
 		class smooth_t
 		{
 		public:
-			smooth_t(void) : axb(1), f(1), sqr(1), sign_bit(false), s(smooth_valid_e) {}
+			smooth_t(void) : axb(1), f(1), sqr(1), sign_bit(false), s(inherit_t::smooth_valid_e) {}
 
 			smooth_t(const polynomial_t &poly,
 				small_int x,
@@ -159,18 +163,18 @@ namespace zn
 						factors_.push_back(static_cast<int>(j));
 				}
 				if (f == 1)
-					s = smooth_valid_e;
+					s = inherit_t::smooth_valid_e;
 				else if (f < thrs)
-					s = smooth_candidate_e;
+					s = inherit_t::smooth_candidate_e;
 				else
-					s = smooth_idle_e;
+					s = inherit_t::smooth_idle_e;
 			}
 			smooth_status_e type(void) const { return s; }
 			bool square(void) const { return factors_.empty(); }
 			bool sign_neg(void) const { return sign_bit; }
 			large_int reminder(void) const { return f; }
 			const std::vector<int>	&factors(void) const { return factors_; }
-			void invalidate(void) { s = smooth_idle_e; }
+			void invalidate(void) { s = inherit_t::smooth_idle_e; }
 			large_int result(const large_int &n)
 			{
 				large_int a = gcd(n, axb + sqr);
@@ -213,7 +217,7 @@ namespace zn
 				if (it2 != end2)
 					fact.insert(fact.end(), it2, end2);
 				factors_ = fact;
-				s = smooth_valid_e;
+				s = inherit_t::smooth_valid_e;
 			}
 			void remap_factors(const std::vector<int> &fmap)
 			{
@@ -252,7 +256,7 @@ namespace zn
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
 			if (base_size != 0)
-				range = primes_range(base_size * 2);
+				range = inherit_t::primes_range(base_size * 2);
 			else
 			{
 				double n1 = safe_cast<double>(n);
@@ -264,7 +268,7 @@ namespace zn
 			small_int r = 1;
 			for (auto p : primes)
 			{
-				base_t base = base_t::build(p, n);
+				typename inherit_t::base_t base = inherit_t::base_t::build(p, n);
 				if (base.prime_.size() > 0)
 					base_.push_back(base);
 			}
@@ -312,9 +316,9 @@ namespace zn
 					continue;
 				auto chunk = sieve(p);
 #endif
-				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
-				actual_bsize = actual_base_size(base_);
+				actual_bsize = inherit_t::actual_base_size(base_);
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				std::cout << count << ". Sieving.. " << smooths.size() << ", candidates " << candidates.size() << ", base = " << actual_bsize << "\r" << std::flush;
 #endif
@@ -329,7 +333,7 @@ namespace zn
 			while (!smooths_found_.empty())
 			{
 				auto chunk = smooths_found_.pop();
-				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 			}
 #endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
@@ -343,9 +347,9 @@ namespace zn
 				return 1;
 			}
 #ifdef HAVE_CANDIDATE_ANALYSYS
-			print_analysis(base_.rbegin()->prime(0));
+			inherit_t::print_analysis(base_.rbegin()->prime(0));
 #endif
-			erase_base(base_, smooths);
+			inherit_t::erase_base(base_, smooths);
 			linear_solver_t solver;
 			auto basemix = solver.solve(smooths, base_.size() + 1);
 			return build_solution(smooths, basemix);
@@ -414,7 +418,7 @@ namespace zn
 				if (values[i] < sieve_thrs)
 				{
 					smooth_t s(poly, i - m_, candidate_thrs, n_, base_);
-					if (s.type() != smooth_idle_e)
+					if (s.type() != inherit_t::smooth_idle_e)
 					{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 						if (!s.invariant(n_, base_))
@@ -563,7 +567,7 @@ namespace zn
 					if (seed_index.index[size] >= seed_index.index[size + 1])
 					{
 						for (i = 0; i < size + 2; i++)
-							seed_index.index[i] = i + sc_first_base;
+							seed_index.index[i] = i + sc_first_base();
 						seed_index.index.push_back(base_.size() - 1);
 						size++;
 						first = &seed_index.index[size];
@@ -582,13 +586,13 @@ namespace zn
 			large_int a2 = safe_cast<large_int>(sqrt(n1)) / m_;
 			polynomial_seed_t result;
 			real loga = real_op_t<real>::log1(a2) / 2 ;
-			result.index.push_back(sc_first_base);
+			result.index.push_back(sc_first_base());
 			result.index.push_back(base_.size() - 1);
 
 			result.target_log = loga;
 			return result;
 		}
-		static const int sc_first_base = 3; // first base used to build a of polynomial
+		static const int sc_first_base() { return 3;} // first base used to build a of polynomial
 #ifdef HAVE_THREADING
 		void sieving_thread(void)
 		{
