@@ -20,12 +20,6 @@ namespace zn
 			small_int prime(size_t idx) const { return prime_[idx]; }
 			small_int residue(size_t idx) const { return residue_[idx]; }
 			real	  logp(void) const { return logp_; }
-			bool eval_residue(const large_int &n)
-			{
-				large_int n1 = n % prime;
-				residue_ = static_cast<small_int>(quadratic_residue<large_int>(n1, prime, prime / prime0)); // actually a power of prime
-				return residue_ != 0;
-			}
 			static base_t build(small_int prime, const large_int &n)
 			{
 				base_t result(prime);
