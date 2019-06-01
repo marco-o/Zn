@@ -2,6 +2,28 @@
 #define quadratic_sieve_base_H
 namespace zn
 {
+	template <class real>
+	struct real_op_t
+	{
+		static real unit(void) { return 1; }
+		template <class T>
+		static real log1(T value)
+		{
+			return static_cast<real>(log(abs(safe_cast<double>(value))));
+		}
+	};
+
+	template <>
+	struct real_op_t<short>
+	{
+		static short unit(void) { return 120; }
+		template <class T>
+		static short log1(T value)
+		{
+			return static_cast<short>(unit() * safe_cast<double>(log(abs(safe_cast<double>(value)))));
+		}
+	};
+
 	template <class large_int, class small_int, class real>
 	class quadratic_sieve_base_t
 	{
@@ -12,7 +34,7 @@ namespace zn
 			std::vector<small_int>	prime_;
 			std::vector<small_int>	residue_; // quadratic residue
 			real					logp_;
-			base_t(small_int p) : logp_(static_cast<real>(-std::log(p)))
+			base_t(small_int p) : logp_(-real_op_t<real>::log1(p))
 			{
 			}
 			bool valid_for_polynomial(void) const { return prime_.size() > 1; }
@@ -60,6 +82,14 @@ namespace zn
 				value.compose(ref);
 			}
 			ref.invalidate();
+		}
+		static size_t actual_base_size(std::vector<base_ref_t> &base)
+		{
+			size_t result = 0;
+			for (const auto &item : base)
+				if (!item.smooths.empty())
+					result++;
+			return result;
 		}
 		template <class smooth_t>
 		void erase_base(std::vector<base_ref_t> &base, std::vector<smooth_t> &smooths)
@@ -119,6 +149,12 @@ namespace zn
 					auto it = candidates.find(s.reminder());
 					if (it != candidates.end())
 					{
+#ifdef HAVE_CANDIDATE_ANALYSYS
+						size_t value = static_cast<size_t>(std::round(log(safe_cast<double>(s.reminder()))));
+						if (value >= composed_hist_.size())
+							composed_hist_.resize(value + 1);
+						composed_hist_[value]++;
+#endif
 						s.compose(it->second, n, base);
 #if DBG_SIEVE >= DBG_SIEVE_ERROR
 						if (!s.invariant(n, base))
@@ -127,6 +163,12 @@ namespace zn
 					}
 					else // just put it aside
 					{
+#ifdef HAVE_CANDIDATE_ANALYSYS
+						size_t value = static_cast<size_t>(std::round(log(safe_cast<double>(s.reminder()))));
+						if (value >= candidate_hist_.size())
+							candidate_hist_.resize(value + 1);
+						candidate_hist_[value]++;
+#endif
 						candidates[s.reminder()] = s;
 						continue;
 					}
@@ -148,7 +190,31 @@ namespace zn
 				result = base_size * std::log(result);
 			return static_cast<small_int>(result);
 		}
-
+#ifdef HAVE_CANDIDATE_ANALYSYS
+		void print_analysis(small_int largest_prime)
+		{
+			size_t size = candidate_hist_.size();
+			if (composed_hist_.size() < size)
+				composed_hist_.resize(size);
+			size_t begin = static_cast<size_t>(round(log(largest_prime))) - 1;
+			int candidates = std::accumulate(candidate_hist_.begin(), candidate_hist_.end(), 0);
+			int composed = std::accumulate(composed_hist_.begin(), composed_hist_.end(), 0);
+			int candidates1 = candidates;
+			int composed1 = composed;
+			std::cout << "Composed = " << composed << std::endl;
+			for (size_t i = begin; i < size; i++)
+			{
+				std::cout << candidate_hist_[i] << "  \t" 
+					      << (candidates1 * 100) / candidates << " \t"					       
+					      << composed_hist_[i] << "  \t" 
+						  << (composed1 * 100) / composed << std::endl ;
+				composed1 -= composed_hist_[i];
+				candidates1 -= candidate_hist_[i];
+			}
+		}
+		std::vector<int> candidate_hist_;
+		std::vector<int> composed_hist_;
+#endif
 	};
 
 	class linear_solver_t

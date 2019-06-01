@@ -32,6 +32,7 @@ const char *may_break(void)
 #else
 #define DBG_SIEVE			DBG_SIEVE_INFO
 #endif
+#define HAVE_CANDIDATE_ANALYSYS
 
 namespace zn
 {
