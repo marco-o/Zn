@@ -406,7 +406,7 @@ namespace zn
 										const std::vector<real> &values)
 		{
 			std::vector<smooth_t> result;
-			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit(); // small prime variation
+			real sieve_thrs = -3 * base_.rbegin()->logp_ / 2 ; // large prime variation, with lower threshold
 			large_int largest_prime = base_.rbegin()->prime(0);
 			large_int candidate_thrs = largest_prime * largest_prime ;
 			size_t size = values.size();
@@ -430,8 +430,11 @@ namespace zn
 			small_int size = values.size();
 			for (const auto &base : base_)
 			{
-				if (base.prime(0) < 20) // small prime variation
-					continue;
+				// small prime variation dropped. 
+				// it is better to avoid keeping large prime instead; 
+				// they are few and difficult to pari
+				//if (base.prime(0) < 20) // small prime variation
+				//	continue;
 				size_t powers = base.powers();
 				real logp = base.logp();
 				for (size_t i = 0; i < powers; i++)

@@ -197,6 +197,8 @@ int main(int argc, char *argv[])
 #ifdef HAVE_GMP
 			else if (strcmp(argv[i], "--qsg") == 0)
 				test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
+			else if (strcmp(argv[i], "--mpqsg") == 0)
+				test_multiple_polynomial_quadratic_sieve<mpz_int, long long, short>(mpz_int(n), mpz_int(m1), base_size);
 #endif
 #endif
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
