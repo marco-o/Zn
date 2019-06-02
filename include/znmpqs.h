@@ -46,7 +46,7 @@ namespace zn
 			small_int x1;
 			small_int x2;
 			bool valid;
-		large_int residue(const base_ref_t &base, const large_int &a, const large_int &a2, const large_int &n)
+			large_int residue(const base_ref_t &base, const large_int &a, const large_int &a2, const large_int &n)
 			{
 				if (base.powers() > 1)
 					return base.residue(1);
@@ -131,6 +131,116 @@ namespace zn
 #endif
 			}
 		};
+
+		class polynomial_generator_t
+		{
+			enum { first_base_e = 2 };
+		public:
+			polynomial_generator_t(const large_int &n, small_int m, const std::vector<base_ref_t> &base)
+			{
+				large_int n1 = 2 * n;
+				large_int a2 = safe_cast<large_int>(sqrt(n1)) / m;
+				polynomial_seed_t result;
+				target_ = real_op_t<real>::log1(a2) / 2;
+				index_.target_log = 0;
+				index_.index.push_back(first_base_e);
+				index_.index.push_back(base.size() - 1);
+				coarse_init(base);
+			}
+			polynomial_seed_t operator()(const std::vector<base_ref_t> &base)
+			{
+				increment(base);
+				while (!within_target(index_))
+					increment(base);
+				return index_;
+			}
+		private:
+			bool within_target(const polynomial_seed_t &seed)
+			{
+				return abs(seed.target_log - target_) < 8;
+			}
+			void increment(const std::vector<base_ref_t> &base)
+			{
+				size_t order = index_.index.size();
+				if (index_.target_log < target_) // short of target, incfrease first element
+				{
+					size_t idx = order - 2;
+					index_.target_log += base[index_.index[idx]].logp();
+					index_.index[idx]++;
+					index_.target_log -= base[index_.index[idx]].logp();
+				}
+				else
+				{
+					size_t idx = order - 1;
+					index_.target_log += base[index_.index[idx]].logp();
+					index_.index[idx]--;
+					index_.target_log -= base[index_.index[idx]].logp();
+				}
+				auto rit = index_.index.rbegin();
+				if (rit[0] != rit[1])
+					return;
+				
+				if (order > 2)
+				{
+					size_t i = order - 2;
+					for (; i > 0; i--)
+						if (index_.index[i] + 1 < index_.index[i + 1])
+							break;
+					index_.index[i]++;
+					for (i++; i < order - 1; i++)
+						index_.index[i] = index_.index[i - 1] + 1;
+					index_.index[order - 1] = base.size() - 1;
+				}
+				// promote to a larger order
+				if (index_.index[order - 2] >= index_.index[order - 1])
+				{
+					for (size_t i = 0; i < order; i++)
+						index_.index[i] = i + first_base_e;
+					index_.index.push_back(base.size() - 1);
+				}
+				coarse_init(base);
+			}
+			void coarse_init(const std::vector<base_ref_t> &base)
+			{
+				init_seed(index_, base);
+				auto it = base.begin();
+				for (size_t idx = index_.index.size() - 1; idx > 0 && !within_target(index_) ; idx--)
+					if (index_.target_log < target_) // too light; increase first
+					{
+						index_.target_log += base[index_.index[idx - 1]].logp();
+						it = std::lower_bound(base.begin() + index_.index[idx - 1] + 1, 
+							base.begin() + index_.index[idx] - 1,
+							target_ - index_.target_log,
+							[](const base_ref_t &base, real p)		{
+							return -base.logp() < p;
+						});
+						index_.index[idx - 1] = it - base.begin();
+						index_.target_log -= base[index_.index[idx - 1]].logp();
+					}
+					else // too heavy, lower the high
+					{
+						index_.target_log += base[index_.index[idx]].logp();
+						it = std::upper_bound(base.begin() + index_.index[idx - 1] + 1,
+							base.begin() + index_.index[idx] - 1,
+							target_ - index_.target_log,
+							[](real p, const base_ref_t &base) {
+							return p < -base.logp() ;
+						});
+						index_.index[idx]  = it - base.begin();
+						index_.target_log -= base[index_.index[idx]].logp();
+					}
+			}
+			void init_seed(polynomial_seed_t &seed, const std::vector<base_ref_t> &base)
+			{
+				seed.target_log = 0;
+				size_t size = seed.index.size();
+				for (size_t i = 0; i < size; i++)
+					seed.target_log -= base[seed.index[i]].logp();
+			}
+			polynomial_seed_t index_;
+			real target_;
+		};
+
 		class smooth_t
 		{
 		public:
@@ -286,18 +396,21 @@ namespace zn
 		{
 			candidates_map_t candidates;
 			smooth_vector_t smooths;
-			polynomial_seed_t seed_index = build_polynomial_index();
+			polynomial_generator_t generator(n_, m_, base_);
+
+//			for (int i = 0; i < 10000; i++)
+//				generator(base_);
 
 #ifdef HAVE_THREADING
 			int cores = system_info_t::cores();
 			for (int i = 0; i < cores; i++)
 			{
 				threads_.emplace_back(&multiple_polynomial_quadratic_sieve_t::sieving_thread, this);
-				polynomials_.push(generate_polynomial(seed_index));
-				polynomials_.push(generate_polynomial(seed_index));
+				polynomials_.push(generator(base_));
+				polynomials_.push(generator(base_));
 			}
 #else
-				polynomials_.push_back(generate_polynomial(seed_index));
+				polynomials_.push_back(generator(base_));
 #endif
 
 			int count = 0;
@@ -306,11 +419,11 @@ namespace zn
 			{
 #ifdef HAVE_THREADING
 				auto chunk = smooths_found_.pop();
-				polynomials_.push(generate_polynomial(seed_index));
+				polynomials_.push(generator(base_));
 #else
 				auto item = *polynomials_.begin();
 				polynomials_.pop_front();
-				polynomials_.push_back(generate_polynomial(seed_index));
+				polynomials_.push_back(generator(base_));
 				polynomial_t p(item.index, base_, n_);
 				if (!p.valid)
 					continue;
@@ -516,83 +629,6 @@ namespace zn
 			for (size_t i = 0; i < size; i++)
 				values[offset + i] = poly.eval_log(begin + i);
 		}
-		real compute_start_log(const polynomial_seed_t &seed)
-		{
-			size_t size = seed.index.size() - 2;
-			real start_log = 0;
-			for (size_t i = 0; i < size; i++)
-				start_log -= base_[seed.index[i]].logp();
-			return start_log;
-		}
-		polynomial_seed_t generate_polynomial(polynomial_seed_t &seed_index)
-		{
-			size_t size = seed_index.index.size() - 2;
-			int *first = &seed_index.index[size];
-			int *last = &seed_index.index[size + 1];
-			real start_log = compute_start_log(seed_index);
-			for ( ; ;)
-			{
-				polynomial_seed_t seed;
-				seed.index = seed_index.index;
-				seed.target_log = start_log - base_[*first].logp() - base_[*last].logp();
-				real quality = abs(seed.target_log - seed_index.target_log);
-				if (seed.target_log > seed_index.target_log) // select one smaller than last
-				{
-					real target = seed_index.target_log - seed.target_log - base_[*last].logp();
-					*last = std::lower_bound(base_.begin() + *first, base_.begin() + *last - 1, target,
-						[](const base_ref_t &base, real p)
-							{ return -base.logp() < p; }) - base_.begin();
-				}
-				else
-				{
-					real target = seed_index.target_log - seed.target_log - base_[*first].logp();
-					*first = std::lower_bound(base_.begin() + *first + 1, base_.begin() + *last, target,
-						[](const base_ref_t &b, real p)
-							{ return -b.logp() < p; }) - base_.begin();
-				}
-				if (*first == *last)
-				{
-					*last = base_.size() - 1;
-					size_t i = size - 1;
-					if (size > 0)
-					{
-						for (; i > 0; i--)
-							if (seed_index.index[i] + 1 < seed_index.index[i + 1])
-								break;
-						seed_index.index[i]++;
-						for (i++; i <= size; i++)
-							seed_index.index[i] = seed_index.index[i - 1] + 1;
-					}
-					// promote to a larger order
-					if (seed_index.index[size] >= seed_index.index[size + 1])
-					{
-						for (i = 0; i < size + 2; i++)
-							seed_index.index[i] = i + sc_first_base();
-						seed_index.index.push_back(base_.size() - 1);
-						size++;
-						first = &seed_index.index[size];
-						last = &seed_index.index[size + 1];
-					}
-					start_log = compute_start_log(seed_index);
-				}
-				if (quality < 0.001)
-					return seed;
-			} 
-			return polynomial_seed_t();
-		}
-		polynomial_seed_t  build_polynomial_index(void)
-		{
-			large_int n1 = 2 * n_;
-			large_int a2 = safe_cast<large_int>(sqrt(n1)) / m_;
-			polynomial_seed_t result;
-			real loga = real_op_t<real>::log1(a2) / 2 ;
-			result.index.push_back(sc_first_base());
-			result.index.push_back(base_.size() - 1);
-
-			result.target_log = loga;
-			return result;
-		}
-		static const int sc_first_base() { return 3;} // first base used to build a of polynomial
 #ifdef HAVE_THREADING
 		void sieving_thread(void)
 		{
