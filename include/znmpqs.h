@@ -293,11 +293,15 @@ namespace zn
 				large_int b = (axb > sqr ? axb - sqr : sqr - axb);
 				return gcd(b, n);
 			}
-			void compose(const smooth_t &rhs, const large_int &n, const std::vector<base_ref_t> &base)
+			void compose(const smooth_t &rhs, 
+				         const large_int &n, 
+				         const std::vector<base_ref_t> &base,
+						 std::vector<int> *erased = nullptr,
+						 std::vector<int> *added = nullptr)
 			{
 				axb = (axb * rhs.axb) % n;
 				sqr = (sqr * rhs.sqr) % n;
-				if (rhs.f == f)
+				if ((rhs.f == f) && (f != 1))
 				{
 					sqr = (sqr * f) % n;
 					f = 1;
@@ -314,9 +318,15 @@ namespace zn
 					if (*it1 < *it2)
 						fact.push_back(*it1++);
 					else if (*it1 > *it2)
+					{
+						if (added)
+							added->push_back(*it2);
 						fact.push_back(*it2++);
+					}
 					else // same factor; gets skipped!
 					{
+						if (erased)
+							erased->push_back(*it1);
 						sqr = (sqr * base[*it1].prime(0)) % n;
 						++it1;
 						++it2;
@@ -333,10 +343,11 @@ namespace zn
 			{
 				for (auto &idx : factors_)
 				{
+					int i1 = idx;
 					idx = fmap[idx];
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 					if (idx < 0)
-						std::cout << "Factor has been removed...\n";
+						std::cout << "Factor " << i1 << " has been removed...\n";
 #endif
 				}
 			}
@@ -462,7 +473,7 @@ namespace zn
 #ifdef HAVE_CANDIDATE_ANALYSYS
 			inherit_t::print_analysis(base_.rbegin()->prime(0));
 #endif
-			inherit_t::erase_base(base_, smooths);
+			inherit_t::erase_base(base_, smooths, n_);
 			linear_solver_t solver;
 			auto basemix = solver.solve(smooths, base_.size() + 1);
 			return build_solution(smooths, basemix);

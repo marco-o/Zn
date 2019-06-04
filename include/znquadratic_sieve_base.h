@@ -71,17 +71,68 @@ namespace zn
 
 			std::vector<int> smooths; // indexes
 		};
-		template <class smooth_t>
-		void erase_base(base_ref_t &base, std::vector<smooth_t> &smooths)
+		void erase_smooth_ref(std::vector<base_ref_t> &base, const std::vector<int> &base_indexes, int smooth_index)
 		{
-			size_t count = base.smooths.size();
-			smooth_t &ref = smooths[base.smooths[0]];
-			for (size_t i = 1; i < count; i++)
+			for (auto bindex : base_indexes)
 			{
-				smooth_t &value = smooths[base.smooths[i]];
-				value.compose(ref);
+				auto &erased_base = base[bindex];
+				auto jt = std::lower_bound(erased_base.smooths.begin(), erased_base.smooths.end(), smooth_index);
+				if (jt != erased_base.smooths.end())
+					erased_base.smooths.erase(jt);
+#if DBG_SIEVE >= DBG_SIEVE_INFO
+				else
+					std::cout << "Cannot erase..." << std::endl;
+#endif		
 			}
-			ref.invalidate();
+		}
+		void insert_smooth_ref(std::vector<base_ref_t> &base, const std::vector<int> &base_indexes, int smooth_index)
+		{
+			for (auto bindex : base_indexes)
+			{
+				auto &added_base = base[bindex];
+				auto jt = std::lower_bound(added_base.smooths.begin(), added_base.smooths.end(), smooth_index);
+				added_base.smooths.insert(jt, smooth_index);
+			}
+		}
+		template <class smooth_t>
+		void erase_base_items(std::vector<base_ref_t> &base, std::vector<smooth_t> &smooths, const large_int &n)
+		{
+			int reduce = base.size() / 5;
+			for (int k = 0 ; k < reduce; k++)
+			{
+				int index = base.size() - k - 1;
+				base_ref_t &item = base[index];
+				if (item.smooths.size() < 2)
+				{
+					if (item.smooths.size() == 1)
+					{
+						smooth_t &smooth = smooths[item.smooths[0]];
+						erase_smooth_ref(base, smooth.factors(), item.smooths[0]);
+						smooth.invalidate();
+					}
+					continue;
+				}
+				smooth_t &smooth = smooths[item.smooths[0]];
+				size_t count = item.smooths.size();
+				for (size_t i = count - 1 ; i > 0 ; i--)
+				{
+					int smooth_index = item.smooths[i];
+					smooth_t &value = smooths[smooth_index];
+					if (smooth.type() != smooth_valid_e)
+						continue;
+					std::vector<int> erased;
+					std::vector<int> added;
+					value.compose(smooth, n, base, &erased, &added);
+					erase_smooth_ref(base, erased, smooth_index);
+					insert_smooth_ref(base, added, smooth_index);
+				}
+				// remove all rferences to this smooth
+				erase_smooth_ref(base, smooth.factors(), item.smooths[0]);
+				smooth.invalidate();
+
+				//item.smooths.clear();
+			}
+			std::cout << "Removed all bases up to " << base.size() - reduce << std::endl ;
 		}
 		static size_t actual_base_size(std::vector<base_ref_t> &base)
 		{
@@ -92,7 +143,7 @@ namespace zn
 			return result;
 		}
 		template <class smooth_t>
-		void erase_base(std::vector<base_ref_t> &base, std::vector<smooth_t> &smooths)
+		void erase_base(std::vector<base_ref_t> &base, std::vector<smooth_t> &smooths, const large_int &n)
 		{
 			std::vector<int> base_remapping;
 			int base_size = static_cast<int>(base.size());
@@ -100,6 +151,7 @@ namespace zn
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 			std::cout << "Removing unused bases: start from " << base_size << " and " << smooths.size() << std::endl;
 #endif
+			erase_base_items(base, smooths, n);
 			for (int i = 0; i < base_size; i++)
 			{
 				auto &base_item = base[i];
@@ -123,7 +175,7 @@ namespace zn
 			for (int i = 0; i < smooths_size; i++)
 			{
 				auto &smooth = smooths[i];
-				if (!smooth.type() == smooth_valid_e)
+				if (smooth.type() != smooth_valid_e)
 					continue;
 				smooth.remap_factors(base_remapping);
 				if (i != smooths_map)
