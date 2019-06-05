@@ -79,10 +79,8 @@ namespace zn
 				auto jt = std::lower_bound(erased_base.smooths.begin(), erased_base.smooths.end(), smooth_index);
 				if (jt != erased_base.smooths.end())
 					erased_base.smooths.erase(jt);
-#if DBG_SIEVE >= DBG_SIEVE_INFO
 				else
-					std::cout << "Cannot erase..." << std::endl;
-#endif		
+					LOG_INFO << "Cannot erase..." << log_base_t::newline_t();
 			}
 		}
 		void insert_smooth_ref(std::vector<base_ref_t> &base, const std::vector<int> &base_indexes, int smooth_index)
@@ -97,10 +95,10 @@ namespace zn
 		template <class smooth_t>
 		void erase_base_items(std::vector<base_ref_t> &base, std::vector<smooth_t> &smooths, const large_int &n)
 		{
-			int reduce = base.size() / 5;
+			int reduce = static_cast<int>(base.size() / 5);
 			for (int k = 0 ; k < reduce; k++)
 			{
-				int index = base.size() - k - 1;
+				int index = static_cast<int>(base.size() - k - 1);
 				base_ref_t &item = base[index];
 				if (item.smooths.size() < 2)
 				{
@@ -132,7 +130,7 @@ namespace zn
 
 				//item.smooths.clear();
 			}
-			std::cout << "Removed all bases up to " << base.size() - reduce << std::endl ;
+			LOG_INFO << "Removed all bases up to " << (base.size() - reduce) << log_base_t::newline_t() ;
 		}
 		static size_t actual_base_size(std::vector<base_ref_t> &base)
 		{
@@ -148,9 +146,8 @@ namespace zn
 			std::vector<int> base_remapping;
 			int base_size = static_cast<int>(base.size());
 			int base_map = 0;
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Removing unused bases: start from " << base_size << " and " << smooths.size() << std::endl;
-#endif
+			LOG_INFO << "Removing unused bases: start from " << base_size 
+				     << " and " << smooths.size() << log_base_t::newline_t();
 			erase_base_items(base, smooths, n);
 			for (int i = 0; i < base_size; i++)
 			{
@@ -183,9 +180,7 @@ namespace zn
 				smooths_map++;
 			}
 			smooths.erase(smooths.begin() + smooths_map, smooths.end());
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Base reduced to " << base.size() << ", smooth to " << smooths.size() << std::endl;
-#endif
+			LOG_INFO << "Base reduced to " << base.size() << ", smooth to " << smooths.size() << log_base_t::newline_t();
 		}
 		template <class smooth_t>
 		void process_candidates_chunk(std::vector<base_ref_t> &base,

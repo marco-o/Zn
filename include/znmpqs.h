@@ -17,6 +17,9 @@
 #include <map>
 #include "znqueue.h"
 #include "znquadratic_sieve_base.h"
+#ifdef HAVE_TIMING
+#include <chrono>
+#endif
 
 namespace zn
 {
@@ -144,7 +147,7 @@ namespace zn
 				target_ = real_op_t<real>::log1(a2) / 2;
 				index_.target_log = 0;
 				index_.index.push_back(first_base_e);
-				index_.index.push_back(base.size() - 1);
+				index_.index.push_back(static_cast<int>(base.size() - 1));
 				coarse_init(base);
 			}
 			polynomial_seed_t operator()(const std::vector<base_ref_t> &base)
@@ -189,14 +192,14 @@ namespace zn
 					index_.index[i]++;
 					for (i++; i < order - 1; i++)
 						index_.index[i] = index_.index[i - 1] + 1;
-					index_.index[order - 1] = base.size() - 1;
+					index_.index[order - 1] = static_cast<int>(base.size() - 1);
 				}
 				// promote to a larger order
 				if (index_.index[order - 2] >= index_.index[order - 1])
 				{
 					for (size_t i = 0; i < order; i++)
-						index_.index[i] = i + first_base_e;
-					index_.index.push_back(base.size() - 1);
+						index_.index[i] = static_cast<int>(i + first_base_e);
+					index_.index.push_back(static_cast<int>(base.size() - 1));
 				}
 				coarse_init(base);
 			}
@@ -214,7 +217,7 @@ namespace zn
 							[](const base_ref_t &base, real p)		{
 							return -base.logp() < p;
 						});
-						index_.index[idx - 1] = it - base.begin();
+						index_.index[idx - 1] = static_cast<int>(it - base.begin());
 						index_.target_log -= base[index_.index[idx - 1]].logp();
 					}
 					else // too heavy, lower the high
@@ -226,7 +229,7 @@ namespace zn
 							[](real p, const base_ref_t &base) {
 							return p < -base.logp() ;
 						});
-						index_.index[idx]  = it - base.begin();
+						index_.index[idx]  = static_cast<int>(it - base.begin());
 						index_.target_log -= base[index_.index[idx]].logp();
 					}
 			}
@@ -347,7 +350,7 @@ namespace zn
 					idx = fmap[idx];
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 					if (idx < 0)
-						std::cout << "Factor " << i1 << " has been removed...\n";
+						LOG_ERROR <<  "Factor " << i1 << " has been removed..." << log_base_t::newline_t();
 #endif
 				}
 			}
@@ -394,9 +397,8 @@ namespace zn
 					base_.push_back(base);
 			}
 			small_int largest_sieving_prime = base_.rbegin()->prime(0);
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << "Actual base size: " << base_.size() << ", largest = " << largest_sieving_prime << std::endl;
-#endif // DBG_SIEVE	
+			LOG_INFO << "Actual base size: " << base_.size() 
+				     << ", largest = " << largest_sieving_prime << log_base_t::newline_t() ;
 			sieve_thrs_ = real_op_t<real>::log1(largest_sieving_prime * 2);
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
@@ -409,8 +411,12 @@ namespace zn
 			smooth_vector_t smooths;
 			polynomial_generator_t generator(n_, m_, base_);
 
-//			for (int i = 0; i < 10000; i++)
-//				generator(base_);
+#ifdef HAVE_TIMING
+			auto start_time = std::chrono::steady_clock::now();
+			double speed = 0;
+			const double eval_step = 2;
+			double eval_time = eval_step;
+#endif
 
 #ifdef HAVE_THREADING
 			int cores = system_info_t::cores();
@@ -443,9 +449,20 @@ namespace zn
 				inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
 				actual_bsize = inherit_t::actual_base_size(base_);
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-				std::cout << count << ". Sieving.. " << smooths.size() << ", candidates " << candidates.size() << ", base = " << actual_bsize << "\r" << std::flush;
+#ifdef HAVE_TIMING
+				if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time).count() >= eval_time)
+				{
+					speed = smooths.size() / eval_time ;
+					eval_time += eval_step;
+				}
 #endif
+				LOG_INFO << count << ". Sieving.. " << smooths.size() 
+					     << ", candidates " << candidates.size() 
+					     << ", base = " << actual_bsize 
+#ifdef HAVE_TIMING
+						 << " (" << speed << ")" 
+#endif					     
+					     << "   \r" << log_base_t::flush_t();
 			}
 #ifdef HAVE_THREADING
 			polynomials_.clear();
@@ -460,14 +477,10 @@ namespace zn
 				inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 			}
 #endif
-#if DBG_SIEVE >= DBG_SIEVE_INFO
-			std::cout << std::endl;
-#endif
+			LOG_INFO << log_base_t::newline_t();
 			if (smooths.size() < actual_bsize)
 			{
-#if 1 // DBG_SIEVE >= DBG_SIEVE_ERROR
-				std::cout << "Found only " << smooths.size() << std::endl;
-#endif
+				LOG_ERROR << "Found only " << smooths.size() << log_base_t::newline_t();
 				return 1;
 			}
 #ifdef HAVE_CANDIDATE_ANALYSYS
@@ -555,7 +568,7 @@ namespace zn
 		}
 		void sieve_values(const polynomial_t &poly, std::vector<real> &values)
 		{
-			small_int size = values.size();
+			size_t size = values.size();
 			for (const auto &base : base_)
 			{
 				if (base.prime(0) < 20) // small prime variation

@@ -155,18 +155,22 @@ int main(int argc, char *argv[])
 {
 	long long a = 2 ;
 	long long b = 7 ;
-	long long m = 19 ;
+	long long m = 160000;
 	long long ps = 1;
-	long long base_size = 0;
+	long long base_size = 3900;
 #ifdef HAVE_BOOST
-	const char *n = "29";
+	const char *n = "43169554144061480807721762059907068496313438381696909238551841";
 	const char *a1 = "2";
-	const char *m1 = "19";
+	const char *m1 = "160000";
 	const char *b1 = "7";
 	const char *ps1 = "1";
 #endif
+
     try
     {
+		log_base_t::init(argc, argv);
+		if (argc == 1)
+			test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size);
 		for (int i = 0; i < argc; i++)
 			if (strncmp(argv[i], "--eratosthenes=", 15) == 0)
 				test_eratosthenes(atoi(argv[i] + 15));

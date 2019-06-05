@@ -15,11 +15,39 @@
 #include <thread>
 
 
-const char *may_break(void)
+inline const char *may_break(void)
 {
 	return "!";
 }
 
+class log_base_t
+{
+public:
+	class flush_t {};
+	class newline_t {};
+	enum level_e {error_e, warning_e, info_e, debug_e, trace_e};
+	virtual ~log_base_t(void) {}
+	static log_base_t &instance(level_e l);
+	static void init(int argc, char *argv[]);
+	virtual log_base_t &operator << (int value) = 0;
+	virtual log_base_t &operator << (size_t value) = 0;
+	virtual log_base_t &operator << (long long value) = 0;
+	virtual log_base_t &operator << (double value) = 0;
+	virtual log_base_t &operator << (const std::string &) = 0;
+	virtual log_base_t &operator << (const flush_t &) = 0;
+	virtual log_base_t &operator << (const newline_t &) = 0;
+private:
+	static level_e &level(void)
+	{
+		static level_e instance = info_e;
+		return instance;
+	}
+};
+
+#define LOG_DEBUG	log_base_t::instance(log_base_t::debug_e)
+#define LOG_INFO	log_base_t::instance(log_base_t::info_e)
+#define LOG_WARNING log_base_t::instance(log_base_t::warning_e)
+#define LOG_ERROR   log_base_t::instance(log_base_t::error_e)
 
 #define ZNASSERT(x) if (!(x)) std::cerr << "Assertion failed: " << #x << may_break() << std::endl ;
 #define DBG_SIEVE_ERROR		1
@@ -33,6 +61,7 @@ const char *may_break(void)
 #define DBG_SIEVE			DBG_SIEVE_INFO
 #endif
 //#define HAVE_CANDIDATE_ANALYSYS
+#define HAVE_TIMING
 
 namespace zn
 {
