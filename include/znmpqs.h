@@ -207,7 +207,7 @@ namespace zn
 			void increment(const std::vector<base_ref_t> &base)
 			{
 				size_t order = index_.index.size();
-				if (index_.target_log < target_) // short of target, incfrease first element
+				if (index_.target_log < target_) // short of target, increase first element
 				{
 					size_t idx = order - 2;
 					index_.target_log += base[index_.index[idx]].logp();
@@ -416,8 +416,7 @@ namespace zn
 		};
 		typedef std::map<large_int, smooth_t> candidates_map_t;
 		typedef std::vector<smooth_t> smooth_vector_t;
-
-		multiple_polynomial_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size) : n_(n), m_(m)
+		multiple_polynomial_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size, int k = 0) : n_(n), m_(m)
 		{
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
@@ -432,7 +431,10 @@ namespace zn
 			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
 #ifdef HAVE_MULTIPLIER
-			k_ = premultiplier(n, primes);
+			if (k == 0)
+				k_ = premultiplier(n, primes);
+			else 
+				k_ = k;
 			LOG_INFO << "Premultiplier = " << k_ << log_base_t::newline_t();
 			n_ *= k_;
 #endif
@@ -494,7 +496,7 @@ namespace zn
 				count++;
 				actual_bsize = inherit_t::actual_base_size(base_);
 #ifdef HAVE_TIMING
-				time_estimator.update(smooths.size(), promoted);
+				time_estimator.update(static_cast<int>(smooths.size()), promoted);
 #endif
 				LOG_INFO << count << ". Sieving.. " << smooths.size() 
 					     << ", candidates " << candidates.size() 
@@ -743,12 +745,12 @@ namespace zn
 
 
 	template <class large_int, class small_int = int, class real = float>
-	large_int multiple_polynomial_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size)
+	large_int multiple_polynomial_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
 	{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 		std::cout << "Factorization of " << n << std::endl;
 #endif
-		multiple_polynomial_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size);
+		multiple_polynomial_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size, k);
 		return qs.process();
 	}
 

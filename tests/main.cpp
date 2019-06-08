@@ -46,9 +46,9 @@ void test_quadratic_sieve(const large_int &n, small_int base_size)
 }
 
 template <class large_int, class small_int = int, class real = float>
-void test_multiple_polynomial_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size)
+void test_multiple_polynomial_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
 {
-	auto p1 = multiple_polynomial_quadratic_sieve<large_int, small_int, real>(n, m, base_size);
+	auto p1 = multiple_polynomial_quadratic_sieve<large_int, small_int, real>(n, m, base_size, k);
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
@@ -158,6 +158,7 @@ int main(int argc, char *argv[])
 	long long m = 160000;
 	long long ps = 1;
 	long long base_size = 3900;
+	int k = 0;
 #ifdef HAVE_BOOST
 	const char *n = "43169554144061480807721762059907068496313438381696909238551841";
 	const char *a1 = "2";
@@ -186,6 +187,8 @@ int main(int argc, char *argv[])
 				base_size = atoi(argv[i] + 12);
 			else if (strncmp(argv[i], "--n=", 4) == 0)
 				n = argv[i] + 4;
+			else if (strncmp(argv[i], "--k=", 4) == 0)
+				k = atoi(argv[i] + 4);
 			else if (strcmp(argv[i], "--qs0") == 0)
 				test_quadratic_sieve0<long long, int>(atoll(n), static_cast<int>(base_size));
 			else if (strcmp(argv[i], "--qs") == 0)
@@ -195,7 +198,7 @@ int main(int argc, char *argv[])
 			else if (strcmp(argv[i], "--qsc") == 0)
 				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--mpqs") == 0)
-				test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size);
+				test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
 			else if (strcmp(argv[i], "--mpqsl") == 0)
 				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 #ifdef HAVE_GMP
