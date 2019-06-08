@@ -62,6 +62,7 @@ private:
 #endif
 //#define HAVE_CANDIDATE_ANALYSYS
 #define HAVE_TIMING
+#define HAVE_MULTIPLIER
 
 namespace zn
 {

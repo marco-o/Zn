@@ -17,20 +17,62 @@
 #include <map>
 #include "znqueue.h"
 #include "znquadratic_sieve_base.h"
+#include "znlinear_solver.h"
 #ifdef HAVE_TIMING
 #include <chrono>
 #endif
 
 namespace zn
 {
+#ifdef HAVE_TIMING
+	// a class that helps in estimate running time
+	// Given
+	// h: rate of candidate generation
+	// a: candidate to smooth convertion rate
+	// k: direct smooth generation
+	// then we have the formula
+	// R = k * t + 0.5 * a * h * t^2
+	//
+	class time_estimator_t
+	{
+	public:
+		typedef std::chrono::steady_clock clock_t;
+		typedef clock_t::time_point time_point_t;
+		time_estimator_t(size_t target) : target_(target), target_time_(1), 
+			estimated_(0), start_(clock_t::now()) {}
+		int elapsed(void) const { return target_time_ - 1; }
+		int estimated(void) { return static_cast<int>(estimated_);	}
+		void update(int total, int promoted)
+		{
+			int direct = total - promoted;
+			double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(clock_t::now() - start_).count() / 1000.0;
+			if (elapsed < target_time_)
+				return;
+			target_time_++;
+			k_ = direct / elapsed;
+			ah_ = 2 * promoted / (elapsed * elapsed);
+			double delta = std::sqrt(k_ * k_ + 2 * target_ * ah_);
+			estimated_ = (-k_ + delta) / (ah_ + 1e-64);
+		}
+	private:
+		double ah_; // a * h of the formula
+		double k_; // number of shooths per polynomial
+		double estimated_;
+		int direct_;
+		int promoted_;
+		int target_time_;
 
+		size_t target_;// the number of relations required
+		time_point_t start_;
+	};
+#endif
 	template <class large_int, class small_int, class real>
 	class multiple_polynomial_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
 	{
 	public:
-                typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t ;
-                typedef typename inherit_t::base_ref_t base_ref_t ;
-                typedef typename inherit_t::smooth_status_e smooth_status_e;
+        typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t ;
+        typedef typename inherit_t::base_ref_t base_ref_t ;
+        typedef typename inherit_t::smooth_status_e smooth_status_e;
 
 		struct polynomial_seed_t
 		{
@@ -389,10 +431,14 @@ namespace zn
 				range = static_cast<small_int>(std::exp(e2));
 			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
-			small_int r = 1;
+#ifdef HAVE_MULTIPLIER
+			k_ = premultiplier(n, primes);
+			LOG_INFO << "Premultiplier = " << k_ << log_base_t::newline_t();
+			n_ *= k_;
+#endif
 			for (auto p : primes)
 			{
-				typename inherit_t::base_t base = inherit_t::base_t::build(p, n);
+				typename inherit_t::base_t base = inherit_t::base_t::build(p, n_);
 				if (base.prime_.size() > 0)
 					base_.push_back(base);
 			}
@@ -412,10 +458,7 @@ namespace zn
 			polynomial_generator_t generator(n_, m_, base_);
 
 #ifdef HAVE_TIMING
-			auto start_time = std::chrono::steady_clock::now();
-			double speed = 0;
-			const double eval_step = 2;
-			double eval_time = eval_step;
+			time_estimator_t time_estimator(base_.size());
 #endif
 
 #ifdef HAVE_THREADING
@@ -431,6 +474,7 @@ namespace zn
 #endif
 
 			int count = 0;
+			int promoted = 0;
 			size_t actual_bsize = 0;
 			while (smooths.size() < actual_bsize + 5 + actual_bsize / 100)
 			{
@@ -446,21 +490,18 @@ namespace zn
 					continue;
 				auto chunk = sieve(p);
 #endif
-				inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				promoted += inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
 				actual_bsize = inherit_t::actual_base_size(base_);
 #ifdef HAVE_TIMING
-				if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_time).count() >= eval_time)
-				{
-					speed = smooths.size() / eval_time ;
-					eval_time += eval_step;
-				}
+				time_estimator.update(smooths.size(), promoted);
 #endif
 				LOG_INFO << count << ". Sieving.. " << smooths.size() 
 					     << ", candidates " << candidates.size() 
 					     << ", base = " << actual_bsize 
 #ifdef HAVE_TIMING
-						 << " (" << speed << ")" 
+						 << " (" << time_estimator.elapsed() 
+					     << " - " << time_estimator.estimated() << ")"
 #endif					     
 					     << "   \r" << log_base_t::flush_t();
 			}
@@ -497,6 +538,9 @@ namespace zn
 		{
 			int failed = 0;
 			large_int r = 1;
+#ifdef HAVE_MULTIPLIER
+			large_int n1 = n_ / k_;
+#endif
 			for (auto &item : basemix)
 			{
 				smooth_t s;
@@ -508,9 +552,15 @@ namespace zn
 				if (!s.invariant(n_, base_))
 					std::cout << "Hmmmm";
 #endif // DBG_SIEVE	
+#ifdef HAVE_MULTIPLIER
+				r = s.result(n1);
+				if (r != 1 && r != n1)
+					break;
+#else
 				r = s.result(n_);
 				if (r != 1 && r != n_)
 					break;
+#endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				else
 					failed++;
@@ -673,11 +723,14 @@ namespace zn
 			}
 		}
 #endif
-		real						 sieve_thrs_;
-		large_int					 smooth_thrs_; // square of last element of base
-		large_int					 n_; // number to factor
-		small_int					 m_; // size of sieving interval
-		std::vector<base_ref_t>		 base_;
+		real						sieve_thrs_;
+		large_int					smooth_thrs_; // square of last element of base
+		large_int					n_; // number to factor
+		small_int					m_; // size of sieving interval
+#ifdef HAVE_MULTIPLIER
+		small_int					k_;
+#endif
+		std::vector<base_ref_t>		base_;
 #ifdef HAVE_THREADING
 		shared_list_t<polynomial_seed_t> polynomials_;
 		shared_list_t<smooth_vector_t>   smooths_found_;
