@@ -61,6 +61,25 @@ void test_eratosthenes(int bound)
     std::cout << std::endl ;
 }
 
+template <class large_int, class small_int = int>
+void test_polynomial_generation(const large_int n, small_int m, small_int base_size)
+{
+	small_int range = quadratic_sieve_base_t<large_int, small_int, short>::primes_range(base_size * 2);
+	auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
+	std::vector<small_int> residual_primes;
+	for (auto p : primes)
+	{
+		small_int n1 = safe_cast<small_int>(n % p);
+		small_int residue = quadratic_residue<small_int>(n1, p, 1); // actually a power of prime
+		if (residue > 0)
+			residual_primes.push_back(p);
+	}
+	polynomial_generator_t<large_int, small_int, small_int> generator(n, m, residual_primes);
+	generator.order_init(6);
+	for (int i = 0; i < 100; i++)
+		generator();
+}
+
 void test_zn1(void)
 {
     typedef module_t<int, 17> mod17_t ;
@@ -201,6 +220,8 @@ int main(int argc, char *argv[])
 				test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
 			else if (strcmp(argv[i], "--mpqsl") == 0)
 				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+			else if (strcmp(argv[i], "--polytest") == 0)
+				test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);
 #ifdef HAVE_GMP
 			else if (strcmp(argv[i], "--qsg") == 0)
 				test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);

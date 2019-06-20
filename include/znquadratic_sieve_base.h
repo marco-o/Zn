@@ -96,6 +96,7 @@ namespace zn
 			}
 			bool valid_for_polynomial(void) const { return prime_.size() > 1; }
 			size_t powers(void) const { return prime_.size(); }
+			operator small_int(void) const {return (prime_.empty() ? 0 : prime_[0]);}
 			small_int prime(size_t idx) const { return prime_[idx]; }
 			small_int residue(size_t idx) const { return residue_[idx]; }
 			real	  logp(void) const { return logp_; }
