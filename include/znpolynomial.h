@@ -12,6 +12,15 @@ namespace zn
 		bool is_null(void) const { return target_log < -0.5; }
 	};
 
+	template <class small_int>
+	struct prime_info_t
+	{
+		small_int prime0;
+		small_int prime;
+		small_int residue;
+		prime_info_t(small_int p, small_int p2, small_int r) : prime0(p), prime(p2), residue(r) {}
+	};
+
 	template <class large_int, class small_int>
 	struct polynomial_t
 	{
@@ -23,33 +32,72 @@ namespace zn
 		small_int x1;
 		small_int x2;
 		bool valid;
-		template <class base_ref_t>
-		large_int residue(const base_ref_t &base, const large_int &a, const large_int &a2, const large_int &n)
+
+		static std::vector<large_int> make_b(const large_int &n, 
+			                          const std::vector<prime_info_t<small_int>> &g, large_int &a) // product of g gives a
 		{
-			if (base.powers() > 1)
-				return base.residue(1);
-			else
-				return quadratic_residue<large_int>(n, a2, a); // actually a power of prime
+			a = 1;
+			for (auto &p : g)
+				a *= p.prime;
+			std::vector<large_int> base;
+			large_int bsum = 0;
+			for (auto p : g)
+			{
+				large_int ak = a / p.prime;
+				small_int ak1 = safe_cast<small_int>(ak % p.prime);
+				small_int ak2 = std::get<2>(extended_euclidean_algorithm(p.prime, ak1));
+				if (ak2 < 0)
+					ak2 += p.prime;
+				ak = p.residue * ak * ak2;
+				ak = ak % a;
+				base.push_back(ak);
+				bsum += ak;
+			}
+			size_t order = g.size() - 1;
+			size_t count = 1 << order;
+			size_t code = 0;
+			std::vector<large_int> result;
+			for (size_t i = 0; ; )
+			{
+				large_int b = bsum % a;
+				if (bit_test(b, 0) == 0)
+					if (b > 0)
+						b -= a;
+					else
+						b += a;
+				result.push_back(b);
+				if (++i == count)
+					break;
+				size_t next_code = i ^ (i >> 1);
+				size_t changed_bit = next_code ^ code;
+				size_t index = lsb(changed_bit);
+				if (changed_bit & next_code)
+					bsum -= 2 * base[index];
+				else
+					bsum += 2 * base[index];
+				code = next_code;
+			}
+			return result;
 		}
-		template <class base_ref_t>
+
 		polynomial_t(const std::vector<int> &idx,
-						const std::vector<base_ref_t> &base,
+						const std::vector<prime_info_t<small_int>> &base,
 						const large_int &n) : index(idx), valid(true)
 		{
 			large_int r = 0;
-			const base_ref_t &bp0 = base[idx[0]];
-			a0 = bp0.prime(0);
+			const prime_info_t<small_int> &bp0 = base[idx[0]];
+			a0 = bp0.prime;
 			a = a0 * a0;
-			b = residue(bp0, a0, a, n);
+			b = quadratic_residue<large_int>(n, a, a0); // actually a power of prime
 			valid = (b != 0);
 			size_t index_count = index.size();
 			for (size_t i = 1; valid && (i < index_count); i++)
 			{
-				const base_ref_t &bp = base[idx[i]];
-				large_int p1 = bp.prime(0);
+				const prime_info_t<small_int> &bp = base[idx[i]];
+				large_int p1 = bp.prime;
 				a0 *= p1;
 				large_int g = p1 * p1;
-				large_int r1 = residue(bp, p1, g, n);
+				large_int r1 = bp.residue;
 				if (r1 == 0)
 					valid = false;
 				large_int db = (r1 - b);
@@ -112,35 +160,139 @@ namespace zn
 		}
 	};
 
-	template <class large_int, class small_int, class base_ref_t>
+	template <class large_int, class small_int>
+	struct polynomial_siqs_t
+	{
+		std::vector<int> index; // base used for the polynomial
+		large_int a0;
+		large_int a;  // a = a0 * a0
+		std::vector<large_int> b1;
+		std::vector<large_int> c1;
+		small_int x1;
+		small_int x2;
+
+		polynomial_siqs_t(const std::vector<prime_info_t<small_int>> &g, // product of g gives a
+						  const large_int &n)
+		{
+			a = 1;
+			a0 = 1;
+			for (auto &p : g)
+			{
+				a  *= p.prime;
+				a0 *= p.prime0;
+			}
+			std::vector<large_int> base;
+			large_int bsum = 0;
+			for (auto p : g)
+			{
+				large_int ak = a / p.prime;
+				small_int ak1 = safe_cast<small_int>(ak % p.prime);
+				small_int ak2 = std::get<2>(extended_euclidean_algorithm(p.prime, ak1));
+				if (ak2 < 0)
+					ak2 += p.prime;
+				ak = p.residue * ak * ak2;
+				ak = ak % a;
+				base.push_back(ak);
+				bsum += ak;
+			}
+			size_t order = g.size() - 1;
+			size_t count = 1 << order;
+			size_t code = 0;
+			std::vector<large_int> result;
+			for (size_t i = 0; ; )
+			{
+				large_int bx = bsum % a;
+				if (bit_test(bx, 0) == 0)
+					if (bx > 0)
+						bx -= a;
+					else
+						bx += a;
+				b1.push_back(bx);
+				c1.push_ back((bx * bx - n) / a);
+				if (++i == count)
+					break;
+				size_t next_code = i ^ (i >> 1);
+				size_t changed_bit = next_code ^ code;
+				size_t index = lsb(changed_bit);
+				if (changed_bit & next_code)
+					bsum -= 2 * base[index];
+				else
+					bsum += 2 * base[index];
+				code = next_code;
+			}
+			compute_zeros(n);
+		}
+		size_t count(void) const { return b1.size(); }
+		void select(size_t index)
+		{
+			b = b1[index];
+			c = c1[index];
+		}
+
+		large_int eval(const large_int &x) const
+		{
+			large_int x1 = a * x + 2 * b;
+			return x1 * x + c;
+		}
+		template <class real>
+		real eval_log(small_int x) const
+		{
+#if 1
+			large_int y = abs(eval(x));
+			return real_op_t<real>::log1(y);
+#else
+			return loga + log(abs((x - z1) * (x - z2)) + 1);
+#endif
+		}
+		std::pair<small_int, small_int> zeros(void) const
+		{
+			return std::make_pair(x1, x2);
+		}
+		// polynomial is negative in the range of the roots, including bounds
+		void compute_zeros(const large_int &n)
+		{
+			large_int d = safe_cast<large_int>(sqrt(n));
+			//x1 = safe_cast<small_int>((-b - d) / a);
+			//x2 = safe_cast<small_int>((-b + d) / a);
+			x1 = safe_cast<small_int>(- d / a);
+			x2 = safe_cast<small_int>(  d / a);
+		}
+	};
+
+	template <class large_int, class small_int>
 	class polynomial_generator_t
 	{
 		enum { first_base_e = 2 };
 	public:
-		struct base_t
+		struct base_t : prime_info_t<small_int>
 		{
-			small_int prime;
 			float	logp;
-			base_t(small_int p) : prime(p), logp(static_cast<float>(std::log(p))) {}
+			base_t(const prime_info_t<small_int> &p) : prime_info_t<small_int>(p), 
+				                     logp(static_cast<float>(std::log(p.prime0))) {}
 		};
-		polynomial_generator_t(const large_int &n, small_int m, const std::vector<base_ref_t> &base)
+		polynomial_generator_t(const large_int &n, small_int m, 
+			                   const std::vector<prime_info_t<small_int>> &base)
 		{
 			large_int n1 = 2 * n;
 			large_int a2 = safe_cast<large_int>(sqrt(n1)) / m;
 			polynomial_seed_t result;
 			target_ = real_op_t<float>::log1(a2) / 2;
-			small_int largest = *base.rbegin();
+			/*
+		    the point is keep enough values with log around target / min_order
+			order_init could take care of that
+			*/
+			small_int largest = base.rbegin()->prime;
 			auto largest_log = real_op_t<float>::log1(largest);
 			int min_order = static_cast<int>(std::ceil(target_ / largest_log));
 			size_t size = base.size();
-			for (size_t i = size / (min_order * 2 + 1) ; i < size ; i++)
+			for (size_t i = 0 ; i < size ; i++)
 				base_.push_back(base_t(base[i]));
 			order_init(min_order);
 		}
 		polynomial_seed_t operator()(void)
 		{
 			increment();
-			while (!within_target(index_))
+			while (!within_target(index_, true))
 				increment();
 			return index_;
 		}
@@ -153,9 +305,16 @@ namespace zn
 			coarse_init();
 		}
 	private:
-		bool within_target(const polynomial_seed_t &seed)
+		bool within_target(const polynomial_seed_t &seed, bool update_err)
 		{
-			return abs(seed.target_log - target_) < 0.1;
+			float err = abs(seed.target_log - target_);
+			if (update_err)
+			{
+				average_count_++;
+				const float alpha = 0.1f + 1.0f / (average_count_ + 0.2f);
+				average_target_error_ = average_target_error_ * (1.0f - alpha) + alpha * err;
+			}
+			return err < average_target_error_ ; // this means keep approximately half of them
 		}
 		void increment(void)
 		{
@@ -201,10 +360,12 @@ namespace zn
 		void coarse_init(void)
 		{
 			init_seed(index_);
+			int limit_mask = 3; // exit when both limits have been touched
 			auto it = base_.begin();
-			for (size_t idx = index_.index.size() - 1; idx > 0 && !within_target(index_); idx--)
+			for (size_t idx = index_.index.size() - 1; idx > 0 && limit_mask && !within_target(index_, false) ; idx--)
 				if (index_.target_log < target_) // too light; increase first
 				{
+					limit_mask &= 2; // remove lower bit
 					index_.target_log -= base_[index_.index[idx - 1]].logp;
 					it = std::lower_bound(base_.begin() + index_.index[idx - 1] + 1,
 						base_.begin() + index_.index[idx] - 1,
@@ -217,6 +378,7 @@ namespace zn
 				}
 				else // too heavy, lower the high
 				{
+					limit_mask &= 1; // remove higher bit
 					index_.target_log -= base_[index_.index[idx]].logp;
 					it = std::upper_bound(base_.begin() + index_.index[idx - 1] + 1,
 						base_.begin() + index_.index[idx] - 1,
@@ -237,6 +399,8 @@ namespace zn
 		}
 		polynomial_seed_t	index_;
 		float				target_;
+		float				average_target_error_ = 0.1f ;
+		int					average_count_ = 0;
 		std::vector<base_t> base_;
 	};
 

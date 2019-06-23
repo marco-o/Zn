@@ -8,6 +8,7 @@
 // http://www.boost.org/LICENSE_1_0.txt)
 //
 #include <iostream>
+#include <fstream>
 #include <string.h>
 #ifdef HAVE_BOOST
 #include <boost/multiprecision/cpp_int.hpp>
@@ -21,6 +22,7 @@
 #include "znquadratic_sieve0.h"
 #include "znquadratic_sieve.h"
 #include "znmpqs.h"
+#include "znsiqs.h"
 
 #ifdef HAVE_BOOST
 using namespace boost::multiprecision;
@@ -53,6 +55,14 @@ void test_multiple_polynomial_quadratic_sieve(const large_int &n, const large_in
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
 
+template <class large_int, class small_int = int, class real = float>
+void test_self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
+{
+	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, m, base_size, k);
+	auto p2 = n / p1;
+	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+}
+
 void test_eratosthenes(int bound)
 {
     auto p = eratosthenes_sieve<int>(bound) ;
@@ -66,18 +76,39 @@ void test_polynomial_generation(const large_int n, small_int m, small_int base_s
 {
 	small_int range = quadratic_sieve_base_t<large_int, small_int, short>::primes_range(base_size * 2);
 	auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
-	std::vector<small_int> residual_primes;
+	std::vector<prime_info_t<small_int>> residual_primes;
+	small_int limit = static_cast<small_int>(std::sqrt(std::numeric_limits<small_int>::max()));
 	for (auto p : primes)
 	{
-		small_int n1 = safe_cast<small_int>(n % p);
-		small_int residue = quadratic_residue<small_int>(n1, p, 1); // actually a power of prime
+		if (p >= limit)
+			break;
+		small_int p2 = p * p;
+		small_int n1 = safe_cast<small_int>(n % p2);
+		small_int residue = quadratic_residue<small_int>(n1, p2, p); // actually a power of prime
 		if (residue > 0)
-			residual_primes.push_back(p);
+			residual_primes.push_back(prime_info_t<small_int>(p, p2, residue));
 	}
-	polynomial_generator_t<large_int, small_int, small_int> generator(n, m, residual_primes);
-	generator.order_init(6);
+	polynomial_generator_t<large_int, small_int> generator(n, m, residual_primes);
+	generator.order_init(8);
 	for (int i = 0; i < 100; i++)
-		generator();
+	{
+		polynomial_seed_t seed = generator();
+		std::vector<prime_info_t<small_int>> g;
+		large_int a = 1;
+		for (auto idx : seed.index)
+			g.push_back(residual_primes[idx]);
+		auto b = polynomial_t<large_int, small_int>::make_b(n, g, a);
+		std::sort(b.begin(), b.end());
+		auto g1 = g[3];
+		auto n2 = safe_cast<small_int>(n % g1.prime);
+		std::cout << "n2 = " << n2 << std::endl;
+		std::cout << "a = " << a << "\n";
+		for (auto &b1 : b)
+		{
+			auto b2 = safe_cast<small_int>(b1 % g1.prime);
+			std::cout << "b = " << b1 << ", b^2 = " << (b2 * b2) % g1.prime << std::endl;
+		}
+	}
 }
 
 void test_zn1(void)
@@ -219,6 +250,10 @@ int main(int argc, char *argv[])
 			else if (strcmp(argv[i], "--mpqs") == 0)
 				test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
 			else if (strcmp(argv[i], "--mpqsl") == 0)
+				test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+			else if (strcmp(argv[i], "--siqs") == 0)
+				test_self_initializing_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
+			else if (strcmp(argv[i], "--siqsl") == 0)
 				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 			else if (strcmp(argv[i], "--polytest") == 0)
 				test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);

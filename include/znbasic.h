@@ -62,10 +62,57 @@ private:
 #endif
 //#define HAVE_CANDIDATE_ANALYSYS
 #define HAVE_TIMING
-#define HAVE_MULTIPLIER
-
+//#define HAVE_MULTIPLIER
+#ifdef HAVE_TIMING
+#include <chrono>
+#endif
 namespace zn
 {
+
+#ifdef HAVE_TIMING
+	// a class that helps in estimate running time
+	// Given
+	// h: rate of candidate generation
+	// a: candidate to smooth convertion rate
+	// k: direct smooth generation
+	// then we have the formula
+	// R = k * t + 0.5 * a * h * t^2
+	//
+	class time_estimator_t
+	{
+	public:
+		typedef std::chrono::steady_clock clock_t;
+		typedef clock_t::time_point time_point_t;
+		time_estimator_t(size_t target) : target_(target), target_time_(1),
+			estimated_(0), start_(clock_t::now()) {}
+		int elapsed(void) const { return target_time_ - 1; }
+		int estimated(void) { return static_cast<int>(estimated_); }
+		void update(int total, int promoted)
+		{
+			int direct = total - promoted;
+			double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(clock_t::now() - start_).count() / 1000.0;
+			if (elapsed < target_time_)
+				return;
+			target_time_++;
+			k_ = direct / elapsed;
+			ah_ = 2 * promoted / (elapsed * elapsed);
+			double delta = std::sqrt(k_ * k_ + 2 * target_ * ah_);
+			estimated_ = (-k_ + delta) / (ah_ + 1e-64);
+		}
+	private:
+		double ah_; // a * h of the formula
+		double k_; // number of shooths per polynomial
+		double estimated_;
+		int direct_;
+		int promoted_;
+		int target_time_;
+
+		size_t target_;// the number of relations required
+		time_point_t start_;
+	};
+#endif
+
+
 	template <class D, class S, bool>
 	struct safe_cast_imp {};
 
@@ -191,6 +238,17 @@ namespace zn
 		if (signbit(n) < 0)
 			n = -n;
 		for (n /= 2; n; i++)
+			n >>= 1;
+		return i;
+	}
+
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, unsigned int>::type lsb(N n)
+	{
+		unsigned int i = 0;
+		if (n == 0)
+			return 0;
+		for (; (n & 1) == 0; i++)
 			n >>= 1;
 		return i;
 	}

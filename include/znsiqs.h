@@ -7,8 +7,8 @@
 // (See accompanying file LICENSE_1_0.txt or copy at 
 // http://www.boost.org/LICENSE_1_0.txt)
 //
-#ifndef znmpqs_H
-#define znmpqs_H
+#ifndef zsipqs_H
+#define zsipqs_H
 
 #include <tuple>
 #include <thread>
@@ -24,8 +24,9 @@
 namespace zn
 {
 
+
 	template <class large_int, class small_int, class real>
-	class multiple_polynomial_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
+	class self_initializing_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
 	{
 	public:
         typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t ;
@@ -162,7 +163,7 @@ namespace zn
 		};
 		typedef std::map<large_int, smooth_t> candidates_map_t;
 		typedef std::vector<smooth_t> smooth_vector_t;
-		multiple_polynomial_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size, int k = 0) : n_(n), m_(m)
+		self_initializing_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size, int k = 0) : n_(n), m_(m)
 		{
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
@@ -500,12 +501,12 @@ namespace zn
 
 
 	template <class large_int, class small_int = int, class real = float>
-	large_int multiple_polynomial_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
+	large_int self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
 	{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 		std::cout << "Factorization of " << n << std::endl;
 #endif
-		multiple_polynomial_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size, k);
+		self_initializing_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size, k);
 		return qs.process();
 	}
 
