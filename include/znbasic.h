@@ -60,6 +60,10 @@ private:
 #else
 #define DBG_SIEVE			DBG_SIEVE_INFO
 #endif
+
+#ifndef _DEBUG
+//#define HAVE_THREADING
+#endif
 //#define HAVE_CANDIDATE_ANALYSYS
 #define HAVE_TIMING
 //#define HAVE_MULTIPLIER
@@ -140,9 +144,7 @@ namespace zn
 		return safe_cast_imp<D, S, std::is_arithmetic<S>::value>::exec(s);
 	}
 
-#ifndef _DEBUG
-#define HAVE_THREADING
-#endif
+
 
 	struct system_info_t
 	{

@@ -28,9 +28,9 @@ namespace zn
 	class multiple_polynomial_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
 	{
 	public:
-        typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t ;
-        typedef typename inherit_t::base_ref_t base_ref_t ;
-        typedef typename inherit_t::smooth_status_e smooth_status_e;
+		typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t;
+		typedef typename inherit_t::base_ref_t base_ref_t;
+		typedef typename inherit_t::smooth_status_e smooth_status_e;
 
 		class smooth_t
 		{
@@ -84,11 +84,11 @@ namespace zn
 				large_int b = (axb > sqr ? axb - sqr : sqr - axb);
 				return gcd(b, n);
 			}
-			void compose(const smooth_t &rhs, 
-				         const large_int &n, 
-				         const std::vector<base_ref_t> &base,
-						 std::vector<int> *erased = nullptr,
-						 std::vector<int> *added = nullptr)
+			void compose(const smooth_t &rhs,
+				const large_int &n,
+				const std::vector<base_ref_t> &base,
+				std::vector<int> *erased = nullptr,
+				std::vector<int> *added = nullptr)
 			{
 				axb = (axb * rhs.axb) % n;
 				sqr = (sqr * rhs.sqr) % n;
@@ -138,7 +138,7 @@ namespace zn
 					idx = fmap[idx];
 #if DBG_SIEVE >= DBG_SIEVE_TRACE
 					if (idx < 0)
-						LOG_ERROR <<  "Factor " << i1 << " has been removed..." << log_base_t::newline_t();
+						LOG_ERROR << "Factor " << i1 << " has been removed..." << log_base_t::newline_t();
 #endif
 				}
 			}
@@ -179,7 +179,7 @@ namespace zn
 #ifdef HAVE_MULTIPLIER
 			if (k == 0)
 				k_ = premultiplier(n, primes);
-			else 
+			else
 				k_ = k;
 			LOG_INFO << "Premultiplier = " << k_ << log_base_t::newline_t();
 			n_ *= k_;
@@ -196,8 +196,8 @@ namespace zn
 				}
 			}
 			small_int largest_sieving_prime = base_.rbegin()->prime(0);
-			LOG_INFO << "Actual base size: " << base_.size() 
-				     << ", largest = " << largest_sieving_prime << " ("<< valid_for_a << ")" << log_base_t::newline_t() ;
+			LOG_INFO << "Actual base size: " << base_.size()
+				<< ", largest = " << largest_sieving_prime << " (" << valid_for_a << ")" << log_base_t::newline_t();
 			sieve_thrs_ = real_op_t<real>::log1(largest_sieving_prime * 2);
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
@@ -222,12 +222,12 @@ namespace zn
 			int cores = system_info_t::cores();
 			for (int i = 0; i < cores; i++)
 			{
-				threads_.emplace_back(&multiple_polynomial_quadratic_sieve_t::sieving_thread, this);
-				polynomials_.push(generator(base_));
-				polynomials_.push(generator(base_));
+				threads_.emplace_back(&multiple_polynomial_quadratic_sieve_t::sieving_thread, this, std::ref(base_info));
+				polynomials_.push(generator());
+				polynomials_.push(generator());
 			}
 #else
-				polynomials_.push_back(generator());
+			polynomials_.push_back(generator());
 #endif
 
 			int count = 0;
@@ -253,18 +253,18 @@ namespace zn
 #ifdef HAVE_TIMING
 				time_estimator.update(static_cast<int>(smooths.size()), promoted);
 #endif
-				LOG_INFO << count << ". Sieving.. " << smooths.size() 
-					     << ", candidates " << candidates.size() 
-					     << ", base = " << actual_bsize 
+				LOG_INFO << count << ". Sieving.. " << smooths.size()
+					<< ", candidates " << candidates.size()
+					<< ", base = " << actual_bsize
 #ifdef HAVE_TIMING
-						 << " (" << time_estimator.elapsed() 
-					     << " - " << time_estimator.estimated() << ")"
+					<< " (" << time_estimator.elapsed()
+					<< " - " << time_estimator.estimated() << ")"
 #endif					     
-					     << "   \r" << log_base_t::flush_t();
+					<< "   \r" << log_base_t::flush_t();
 			}
 #ifdef HAVE_THREADING
 			polynomials_.clear();
-			for (int i = 0; i < cores ; i++)
+			for (int i = 0; i < cores; i++)
 				polynomials_.push(polynomial_seed_t());
 			for (auto &thread : threads_)
 				thread.join();
@@ -291,7 +291,7 @@ namespace zn
 		}
 	private:
 		large_int  build_solution(const smooth_vector_t &smooths,
-								  const std::vector<std::vector<int>> &basemix)
+			const std::vector<std::vector<int>> &basemix)
 		{
 			int failed = 0;
 			large_int r = 1;
@@ -351,12 +351,12 @@ namespace zn
 			return collect_smooth(poly, values);
 		}
 		smooth_vector_t  collect_smooth(const polynomial_t<large_int, small_int> &poly,
-										const std::vector<real> &values)
+			const std::vector<real> &values)
 		{
 			std::vector<smooth_t> result;
 			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit(); // small prime variation
 			large_int largest_prime = base_.rbegin()->prime(0);
-			large_int candidate_thrs = largest_prime * largest_prime ;
+			large_int candidate_thrs = largest_prime * largest_prime;
 			size_t size = values.size();
 			for (size_t i = 0; i < size; i++)
 				if (values[i] < sieve_thrs)
@@ -373,6 +373,7 @@ namespace zn
 				}
 			return result;
 		}
+
 		void sieve_values(const polynomial_t<large_int, small_int> &poly, std::vector<real> &values)
 		{
 			size_t size = values.size();
@@ -461,13 +462,13 @@ namespace zn
 				values[offset + i] = poly.eval_log<real>(begin + i);
 		}
 #ifdef HAVE_THREADING
-		void sieving_thread(void)
+		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info)
 		{
 			try
 			{
 				for (auto seed = polynomials_.pop(); !seed.is_null(); seed = polynomials_.pop())
 				{
-					polynomial_t<large_int, small_int> p(seed.index, base_, n_);
+					polynomial_t<large_int, small_int> p(seed.index, base_info, n_);
 					if (!p.valid)
 						continue;
 					auto chunk = sieve(p);

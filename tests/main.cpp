@@ -93,17 +93,13 @@ void test_polynomial_generation(const large_int n, small_int m, small_int base_s
 	for (int i = 0; i < 100; i++)
 	{
 		polynomial_seed_t seed = generator();
-		std::vector<prime_info_t<small_int>> g;
-		large_int a = 1;
-		for (auto idx : seed.index)
-			g.push_back(residual_primes[idx]);
-		auto b = polynomial_t<large_int, small_int>::make_b(n, g, a);
-		std::sort(b.begin(), b.end());
-		auto g1 = g[3];
+		polynomial_siqs_t<large_int, small_int> poly(seed.index, residual_primes, n);
+		std::sort(poly.b1.begin(), poly.b1.end());
+		auto g1 = residual_primes[seed.index[3]];
 		auto n2 = safe_cast<small_int>(n % g1.prime);
 		std::cout << "n2 = " << n2 << std::endl;
-		std::cout << "a = " << a << "\n";
-		for (auto &b1 : b)
+		std::cout << "a = " << poly.a << "\n";
+		for (auto &b1 : poly.b1)
 		{
 			auto b2 = safe_cast<small_int>(b1 % g1.prime);
 			std::cout << "b = " << b1 << ", b^2 = " << (b2 * b2) % g1.prime << std::endl;
