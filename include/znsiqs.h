@@ -32,6 +32,8 @@ namespace zn
         typedef quadratic_sieve_base_t<large_int, small_int, real> inherit_t ;
         typedef typename inherit_t::base_ref_t base_ref_t ;
         typedef typename inherit_t::smooth_status_e smooth_status_e;
+		typedef polynomial_siqs_t<large_int, small_int> poly_t;
+		typedef sieve_range_t<poly_t, real>				sieve_t;
 
 		class smooth_t
 		{
@@ -39,10 +41,11 @@ namespace zn
 			smooth_t(void) : axb(1), f(1), sqr(1), sign_bit(false), s(inherit_t::smooth_valid_e) {}
 
 			smooth_t(const polynomial_siqs_t<large_int, small_int> &poly,
-				small_int x,
-				const large_int &thrs,
-				const large_int &n,
-				const std::vector<base_ref_t> &base) : sqr(poly.a0), sign_bit(false)
+					small_int idx,
+					small_int x,
+					const large_int &thrs,
+					const large_int &n,
+					const std::vector<typename sieve_t::sieve_run_t> &runs) : sqr(poly.a0), sign_bit(false)
 			{
 				axb = poly.a * x + poly.b;
 				f = poly.eval(x);
@@ -51,18 +54,21 @@ namespace zn
 					f = -f;
 					sign_bit = true;
 				}
-				size_t base_size = base.size();
-				for (size_t j = 0; j < base_size; j++)
+				size_t runs_size = runs.size();
+				for (size_t j = 0; j < runs_size; j++)
 				{
-					const auto &b = base[j];
+					const auto &run = runs[j];
+					if (run.pwr || ((x - run.x) % run.p != 0))
+						continue;
+
 					int rexp = 0;
-					large_int p = b.prime(0);
+					large_int p = run.p;
 					int power = 0;
 					while (divide_qr1(f, p))
 						if (++power % 2 == 0)
 							sqr = (sqr * p) % n;
 					if (power & 1)
-						factors_.push_back(static_cast<int>(j));
+						factors_.push_back(static_cast<int>(run.bix));
 				}
 				if (f == 1)
 					s = inherit_t::smooth_valid_e;
@@ -328,9 +334,6 @@ namespace zn
 		smooth_vector_t sieve(polynomial_siqs_t<large_int, small_int> &poly)
 		{
 			// build vector for sieving
-			typedef polynomial_siqs_t<large_int, small_int> poly_t;
-			typedef sieve_range_t<poly_t, real>				sieve_t;
-
 			smooth_vector_t result;
 			poly.select(0);
 			size_t count = poly.count();
@@ -347,7 +350,7 @@ namespace zn
 					for (size_t i = index; i < size; i += run.p)
 						values[i] += run.lg;
 				}
-				collect_smooth(poly, values, result);
+				collect_smooth(poly, values, runs, result);
 				if (c < count)
 				{
 					poly.select(c);
@@ -358,6 +361,7 @@ namespace zn
 		}
 		void collect_smooth(const polynomial_siqs_t<large_int, small_int> &poly,
 							const std::vector<real> &values, 
+							const std::vector<typename sieve_t::sieve_run_t> &runs, 
 							smooth_vector_t &result)
 		{
 			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit(); // small prime variation
@@ -367,7 +371,7 @@ namespace zn
 			for (size_t i = 0; i < size; i++)
 				if (values[i] < sieve_thrs)
 				{
-					smooth_t s(poly, i - m_, candidate_thrs, n_, base_);
+					smooth_t s(poly, i, i - m_, candidate_thrs, n_, runs);
 					if (s.type() != inherit_t::smooth_idle_e)
 					{
 #if DBG_SIEVE >= DBG_SIEVE_INFO

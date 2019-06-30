@@ -382,6 +382,8 @@ namespace zn
 						  // changes for each sub-polynomial
 			run_int_t b;  // poly.b % prime
 			run_int_t x;
+			size_t bix; // index to base array
+			bool pwr;
 		};
 		sieve_range_t(const poly_t &poly, small_int m) : poly_(poly), m_(m) {}
 		std::vector<real_t> fill(void) const 
@@ -406,8 +408,10 @@ namespace zn
 							  std::vector<sieve_run_t> &runs)
 		{
 			sieve_run_t run;
-			for (auto &base : bases)
+			size_t bases_size = bases.size();
+			for (size_t k = 0 ; k < bases_size ; k++)
 			{
+				auto &base = bases[k];
 				size_t powers = base.powers();
 				run.lg = base.logp();
 				for (size_t i = 0; i < powers; i++)
@@ -416,10 +420,12 @@ namespace zn
 					run.a = safe_cast<run_int_t>(poly.a % run.p);
 					if (run.a == 0)
 						break; // we are hitting a divisor of a
+					run.bix = k;
 					run.a1 = std::get<1>(extended_euclidean_algorithm<run_int_t>(run.a, run.p));
 					run.b = safe_cast<run_int_t>(poly.b % run.p);
 					run.r = static_cast<run_int_t>(base.residue(i));
 					run.x = ((run.p - run.b + run.r) * run.a1) % run.p;
+					run.pwr = (i > 0);
 					runs.push_back(run);
 					if (run.p > 2)
 					{
