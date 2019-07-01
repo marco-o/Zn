@@ -58,9 +58,10 @@ namespace zn
 				for (size_t j = 0; j < runs_size; j++)
 				{
 					const auto &run = runs[j];
+#if 1
 					if (run.pwr || ((x - run.x) % run.p != 0))
 						continue;
-
+#endif
 					int rexp = 0;
 					large_int p = run.p;
 					int power = 0;
@@ -225,7 +226,7 @@ namespace zn
 			time_estimator_t time_estimator(base_.size());
 #endif
 
-#ifdef HAVE_THREADING1
+#ifdef HAVE_THREADING
 			int cores = system_info_t::cores();
 			for (int i = 0; i < cores; i++)
 			{
@@ -240,7 +241,7 @@ namespace zn
 			size_t actual_bsize = 0;
 			while (smooths.size() < actual_bsize + 5 + actual_bsize / 100)
 			{
-#ifdef HAVE_THREADING1
+#ifdef HAVE_THREADING
 				auto chunk = smooths_found_.pop();
 				polynomials_.push(generator());
 #else
@@ -263,7 +264,7 @@ namespace zn
 #endif					     
 					     << "   \r" << log_base_t::flush_t();
 			}
-#ifdef HAVE_THREADING1
+#ifdef HAVE_THREADING
 			polynomials_.clear();
 			for (int i = 0; i < cores ; i++)
 				polynomials_.push(polynomial_seed_t());
@@ -277,6 +278,7 @@ namespace zn
 			}
 #endif
 			LOG_INFO << log_base_t::newline_t();
+			LOG_INFO << "Attempted " << smooth_attempts_ << ", failed " << smooth_failures_ << "\n";
 			if (smooths.size() < actual_bsize)
 			{
 				LOG_ERROR << "Found only " << smooths.size() << log_base_t::newline_t();
@@ -372,6 +374,8 @@ namespace zn
 				if (values[i] < sieve_thrs)
 				{
 					smooth_t s(poly, i, i - m_, candidate_thrs, n_, runs);
+					smooth_attempts_++;
+					
 					if (s.type() != inherit_t::smooth_idle_e)
 					{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
@@ -380,19 +384,19 @@ namespace zn
 #endif // DBG_SIEVE	
 						result.push_back(s);
 					}
+					else
+						smooth_failures_++;
 				}
 		}
-#ifdef HAVE_THREADING1
+#ifdef HAVE_THREADING
 		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info)
 		{
 			try
 			{
 				for (auto seed = polynomials_.pop(); !seed.is_null(); seed = polynomials_.pop())
 				{
-					polynomial_t<large_int, small_int> p(seed.index, base_info, n_);
-					if (!p.valid)
-						continue;
-					auto chunk = sieve(p);
+					polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
+					auto chunk = sieve(poly);
 					smooths_found_.push(chunk);
 				}
 			}
@@ -410,11 +414,13 @@ namespace zn
 		small_int					k_;
 #endif
 		std::vector<base_ref_t>		base_;
-#ifdef HAVE_THREADING1
+#ifdef HAVE_THREADING
 		shared_list_t<polynomial_seed_t> polynomials_;
 		shared_list_t<smooth_vector_t>   smooths_found_;
 		std::vector<std::thread>	     threads_;
 #endif
+		int smooth_attempts_ = 0;
+		int smooth_failures_ = 0;
 	};
 
 
