@@ -59,8 +59,15 @@ namespace zn
 				{
 					const auto &run = runs[j];
 #if 1
-					if (run.pwr || ((x - run.x) % run.p != 0))
+					if ((run.bix < 0) || ((x - run.x) % run.p != 0))
+					{
+#ifdef _DEBUG1
+						large_int f1 = f;
+						if (divide_qr1(f1, large_int(run.p)))
+							std::cout << "Hmm   " << run.p << "\n";
+#endif
 						continue;
+					}
 #endif
 					int rexp = 0;
 					large_int p = run.p;
@@ -68,8 +75,12 @@ namespace zn
 					while (divide_qr1(f, p))
 						if (++power % 2 == 0)
 							sqr = (sqr * p) % n;
+#ifdef _DEBUG
+					if (power == 0)
+						std::cout << "Boh.. " << run.p << "\n";
+#endif
 					if (power & 1)
-						factors_.push_back(static_cast<int>(run.bix));
+						factors_.push_back(run.bix);
 				}
 				if (f == 1)
 					s = inherit_t::smooth_valid_e;
@@ -170,7 +181,7 @@ namespace zn
 		};
 		typedef std::map<large_int, smooth_t> candidates_map_t;
 		typedef std::vector<smooth_t> smooth_vector_t;
-		self_initializing_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size, int k = 0) : n_(n), m_(m)
+		self_initializing_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size) : n_(n), m_(m)
 		{
 			// double the range; half of them won't be a quadratic residue
 			small_int range;
@@ -212,7 +223,7 @@ namespace zn
 			if (m_ < sqrt(largest_sieving_prime))
 				m_ = largest_sieving_prime * 2;
 		}
-		large_int process(void)
+		large_int process(int order)
 		{
 			candidates_map_t candidates;
 			smooth_vector_t smooths;
@@ -221,7 +232,8 @@ namespace zn
 				if (item.powers() > 1)
 					base_info.push_back(prime_info_t<small_int>{item.prime(0), item.prime(1), item.residue(1)});
 			polynomial_generator_t<large_int, small_int> generator(n_, m_, base_info);
-
+			if (order > 0)
+				generator.order_init(order);
 #ifdef HAVE_TIMING
 			time_estimator_t time_estimator(base_.size());
 #endif
@@ -341,6 +353,8 @@ namespace zn
 			size_t count = poly.count();
 			std::vector<real> values_init = sieve_t(poly, static_cast<size_t>(m_)).fill();
 			std::vector<sieve_t::sieve_run_t> runs;
+
+			runs.reserve(base_.size() * 2);
 			sieve_t::build_run(poly, base_, runs);
 			size_t size = values_init.size();
 			for (size_t c = 1; c <= count; c++)
@@ -363,10 +377,10 @@ namespace zn
 		}
 		void collect_smooth(const polynomial_siqs_t<large_int, small_int> &poly,
 							const std::vector<real> &values, 
-							const std::vector<typename sieve_t::sieve_run_t> &runs, 
+							const std::vector<typename sieve_t::sieve_run_t> &runs,
 							smooth_vector_t &result)
 		{
-			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit(); // small prime variation
+			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit() / 2; // small prime variation
 			large_int largest_prime = base_.rbegin()->prime(0);
 			large_int candidate_thrs = largest_prime * largest_prime ;
 			size_t size = values.size();
@@ -426,13 +440,13 @@ namespace zn
 
 
 	template <class large_int, class small_int = int, class real = float>
-	large_int self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
+	large_int self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int order = 0)
 	{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 		std::cout << "Factorization of " << n << std::endl;
 #endif
-		self_initializing_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size, k);
-		return qs.process();
+		self_initializing_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size);
+		return qs.process(order);
 	}
 
 };

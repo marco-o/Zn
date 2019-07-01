@@ -378,12 +378,11 @@ namespace zn
 			run_int_t a; // poly.a % prime
 			run_int_t r;
 			run_int_t a1; // inverse of a
-			real_t    lg; // logarithm to subbtract
-						  // changes for each sub-polynomial
+			real_t    lg; // logarithm to subtract
+			// the following values change for each sub-polynomial
 			run_int_t b;  // poly.b % prime
 			run_int_t x;
-			size_t bix; // index to base array
-			bool pwr;
+			int bix;
 		};
 		sieve_range_t(const poly_t &poly, small_int m) : poly_(poly), m_(m) {}
 		std::vector<real_t> fill(void) const 
@@ -404,8 +403,8 @@ namespace zn
 		};
 		template <class base_t>
 		static void build_run(const poly_t &poly,
-							  const std::vector<base_t> &bases,
-							  std::vector<sieve_run_t> &runs)
+								const std::vector<base_t> &bases,
+								std::vector<sieve_run_t> &runs)
 		{
 			sieve_run_t run;
 			size_t bases_size = bases.size();
@@ -414,18 +413,17 @@ namespace zn
 				auto &base = bases[k];
 				size_t powers = base.powers();
 				run.lg = base.logp();
+				run.bix = k;
 				for (size_t i = 0; i < powers; i++)
 				{
 					run.p = static_cast<run_int_t>(base.prime(i));
 					run.a = safe_cast<run_int_t>(poly.a % run.p);
 					if (run.a == 0)
 						break; // we are hitting a divisor of a
-					run.bix = k;
 					run.a1 = std::get<1>(extended_euclidean_algorithm<run_int_t>(run.a, run.p));
 					run.b = safe_cast<run_int_t>(poly.b % run.p);
 					run.r = static_cast<run_int_t>(base.residue(i));
 					run.x = ((run.p - run.b + run.r) * run.a1) % run.p;
-					run.pwr = (i > 0);
 					runs.push_back(run);
 					if (run.p > 2)
 					{
@@ -433,6 +431,7 @@ namespace zn
 						run.x = ((run.p - run.b + run.r) * run.a1) % run.p;
 						runs.push_back(run);
 					}
+					run.bix = -1;
 				}
 			}
 		}

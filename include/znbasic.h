@@ -64,7 +64,7 @@ private:
 #ifndef _DEBUG
 #define HAVE_THREADING
 #endif
-//#define HAVE_CANDIDATE_ANALYSYS
+#define HAVE_CANDIDATE_ANALYSYS
 #define HAVE_TIMING
 //#define HAVE_MULTIPLIER
 #ifdef HAVE_TIMING

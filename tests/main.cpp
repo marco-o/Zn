@@ -56,9 +56,9 @@ void test_multiple_polynomial_quadratic_sieve(const large_int &n, const large_in
 }
 
 template <class large_int, class small_int = int, class real = float>
-void test_self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int k = 0)
+void test_self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int order = 0)
 {
-	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, m, base_size, k);
+	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, m, base_size, order);
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
