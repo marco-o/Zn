@@ -87,7 +87,12 @@ namespace zn
 				else if (f < thrs)
 					s = inherit_t::smooth_candidate_e;
 				else
+				{
 					s = inherit_t::smooth_idle_e;
+#ifdef _DEBUG
+					margin = real_op_t<real>::log1(f / thrs) ;
+#endif
+				}
 			}
 			smooth_status_e type(void) const { return s; }
 			bool square(void) const { return factors_.empty(); }
@@ -177,6 +182,9 @@ namespace zn
 			large_int				sqr; // product of prime with even exponents (/ 2)
 			large_int				axb;// a *x + b, the number squared
 			bool					sign_bit; // true if negative
+#ifdef _DEBUG
+			real margin = 0;
+#endif
 			smooth_status_e			s;
 		};
 		typedef std::map<large_int, smooth_t> candidates_map_t;
@@ -217,7 +225,6 @@ namespace zn
 			small_int largest_sieving_prime = base_.rbegin()->prime(0);
 			LOG_INFO << "Actual base size: " << base_.size() 
 				     << ", largest = " << largest_sieving_prime << " ("<< valid_for_a << ")" << log_base_t::newline_t() ;
-			sieve_thrs_ = real_op_t<real>::log1(largest_sieving_prime * 2);
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
 			if (m_ < sqrt(largest_sieving_prime))
@@ -246,6 +253,11 @@ namespace zn
 				polynomials_.push(generator());
 				polynomials_.push(generator());
 			}
+#else
+			polynomial_siqs_t<large_int, small_int> poly(generator().index, base_info, n_);
+			poly.select(0);
+			std::vector<real> values_init = sieve_t(poly, static_cast<size_t>(m_)).fill();
+			std::vector<real> values(values_init.size());
 #endif
 
 			int count = 0;
@@ -259,7 +271,7 @@ namespace zn
 #else
 				auto seed = generator();
 				polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
-				auto chunk = sieve(poly);
+				auto chunk = sieve(poly, values_init, values);
 #endif
 				promoted += inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
@@ -345,26 +357,27 @@ namespace zn
 
 			return r;
 		}
-		smooth_vector_t sieve(polynomial_siqs_t<large_int, small_int> &poly)
+		smooth_vector_t sieve(polynomial_siqs_t<large_int, small_int> &poly,
+							  const std::vector<real> &value_init,
+							  std::vector<real> &values)
 		{
 			// build vector for sieving
 			smooth_vector_t result;
 			poly.select(0);
 			size_t count = poly.count();
-			std::vector<real> values_init = sieve_t(poly, static_cast<size_t>(m_)).fill();
 			std::vector<sieve_t::sieve_run_t> runs;
 
 			runs.reserve(base_.size() * 2);
 			sieve_t::build_run(poly, base_, runs);
-			size_t size = values_init.size();
+			size_t size = values.size();
 			for (size_t c = 1; c <= count; c++)
 			{
-				std::vector<real> values(values_init);
+				std::copy(value_init.begin(), value_init.end(), values.begin());
 				for (auto &run : runs)
 				{
 					size_t index = static_cast<size_t>(m_ + run.x) % run.p;
 					for (size_t i = index; i < size; i += run.p)
-						values[i] += run.lg;
+						values[i] -= run.lg;
 				}
 				collect_smooth(poly, values, runs, result);
 				if (c < count)
@@ -380,7 +393,7 @@ namespace zn
 							const std::vector<typename sieve_t::sieve_run_t> &runs,
 							smooth_vector_t &result)
 		{
-			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit() / 2; // small prime variation
+			real sieve_thrs = 2 * base_.rbegin()->logp_ + 5 * real_op_t<real>::unit(); // small prime variation
 			large_int largest_prime = base_.rbegin()->prime(0);
 			large_int candidate_thrs = largest_prime * largest_prime ;
 			size_t size = values.size();
@@ -405,12 +418,20 @@ namespace zn
 #ifdef HAVE_THREADING
 		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info)
 		{
+			std::vector<real> values_init;
+			std::vector<real> values;
 			try
 			{
 				for (auto seed = polynomials_.pop(); !seed.is_null(); seed = polynomials_.pop())
 				{
 					polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
-					auto chunk = sieve(poly);
+					if (values_init.empty())
+					{
+						poly.select(0);
+						values_init = sieve_t(poly, static_cast<size_t>(m_)).fill();
+						values.resize(values_init.size());
+					}
+					auto chunk = sieve(poly, values_init, values);
 					smooths_found_.push(chunk);
 				}
 			}
@@ -420,7 +441,6 @@ namespace zn
 			}
 		}
 #endif
-		real						sieve_thrs_;
 		large_int					smooth_thrs_; // square of last element of base
 		large_int					n_; // number to factor
 		small_int					m_; // size of sieving interval

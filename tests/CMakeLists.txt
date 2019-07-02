@@ -8,6 +8,7 @@ set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h ../include/znlinea
 				  ../include/znquadratic_sieve_base.h  ../include/znpolynomial.h
 				  ../include/znmpqs.h ../include/znsiqs.h ../include/znqueue.h)
 include_directories(../include)
+set (EXECUTABLE_OUTPUT_PATH ../bin)
 
 if (WIN32)
 	set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")

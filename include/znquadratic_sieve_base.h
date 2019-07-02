@@ -24,6 +24,17 @@ namespace zn
 		}
 	};
 
+	template <>
+	struct real_op_t<unsigned char>
+	{
+		static unsigned char unit(void) { return 1; }
+		template <class T>
+		static unsigned char log1(T value)
+		{
+			return static_cast<unsigned char>(safe_cast<double>(log(abs(safe_cast<double>(value)))));
+		}
+	};
+
 	template <class large_int, class small_int>
 	small_int premultiplier(const large_int &n, const std::vector<small_int> &primes)
 	{
@@ -91,7 +102,7 @@ namespace zn
 			std::vector<small_int>	prime_;
 			std::vector<small_int>	residue_; // quadratic residue
 			real					logp_;
-			base_t(small_int p) : logp_(-real_op_t<real>::log1(p))
+			base_t(small_int p) : logp_(real_op_t<real>::log1(p))
 			{
 			}
 			bool valid_for_polynomial(void) const { return prime_.size() > 1; }

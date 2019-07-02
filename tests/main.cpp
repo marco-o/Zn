@@ -248,7 +248,7 @@ int main(int argc, char *argv[])
 			else if (strcmp(argv[i], "--mpqsl") == 0)
 				test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 			else if (strcmp(argv[i], "--siqs") == 0)
-				test_self_initializing_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
+				test_self_initializing_quadratic_sieve<cpp_int, long long, unsigned char>(cpp_int(n), cpp_int(m1), base_size, k);
 			else if (strcmp(argv[i], "--siqsl") == 0)
 				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 			else if (strcmp(argv[i], "--polytest") == 0)

@@ -198,7 +198,6 @@ namespace zn
 			small_int largest_sieving_prime = base_.rbegin()->prime(0);
 			LOG_INFO << "Actual base size: " << base_.size()
 				<< ", largest = " << largest_sieving_prime << " (" << valid_for_a << ")" << log_base_t::newline_t();
-			sieve_thrs_ = real_op_t<real>::log1(largest_sieving_prime * 2);
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
 			if (m_ < sqrt(largest_sieving_prime))
@@ -481,7 +480,6 @@ namespace zn
 			}
 		}
 #endif
-		real						sieve_thrs_;
 		large_int					smooth_thrs_; // square of last element of base
 		large_int					n_; // number to factor
 		small_int					m_; // size of sieving interval

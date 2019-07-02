@@ -385,7 +385,7 @@ namespace zn
 			int bix;
 		};
 		sieve_range_t(const poly_t &poly, small_int m) : poly_(poly), m_(m) {}
-		std::vector<real_t> fill(void) const 
+		std::vector<real_t> fill(real_t offset = 4) const 
 		{
 			std::vector<real_t> values(2 * static_cast<size_t>(m_));
 			auto zeros = poly_.zeros();
@@ -399,6 +399,8 @@ namespace zn
 			}
 			else // enters here only during tests
 				fill_range(values, -m_, poly_.eval_log<real_t>(-m_), m_, poly_.eval_log<real_t>(m_));
+			for (auto &v : values)
+				v += offset;
 			return values;
 		};
 		template <class base_t>
