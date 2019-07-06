@@ -62,9 +62,10 @@ private:
 #endif
 
 #ifndef _DEBUG
-//#define HAVE_THREADING
+#define HAVE_THREADING
 #endif
 #define HAVE_CANDIDATE_ANALYSYS
+//#define HAVE_DOUBLE_LARGE_PRIME
 #define HAVE_TIMING
 //#define HAVE_MULTIPLIER
 #ifdef HAVE_TIMING

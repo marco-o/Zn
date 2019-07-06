@@ -181,6 +181,8 @@ namespace zn
 				code = next_code;
 			}
 			compute_zeros(n);
+			b = 0;
+			c = -n / a;
 		}
 		size_t count(void) const { return b1.size(); }
 		void select(size_t index)
@@ -385,7 +387,7 @@ namespace zn
 			int bix;
 		};
 		sieve_range_t(const poly_t &poly, small_int m) : poly_(poly), m_(m) {}
-		std::vector<real_t> fill(real_t offset = 4) const 
+		std::vector<real_t> fill(real_t &offset) const 
 		{
 			std::vector<real_t> values(2 * static_cast<size_t>(m_));
 			auto zeros = poly_.zeros();
@@ -399,6 +401,9 @@ namespace zn
 			}
 			else // enters here only during tests
 				fill_range(values, -m_, poly_.eval_log<real_t>(-m_), m_, poly_.eval_log<real_t>(m_));
+			real_t const & (*max1) (real_t const &, real_t const &) = std::max<real_t>;
+			real_t mx = std::accumulate(values.begin(), values.end(), static_cast<real_t>(0), max1);
+			offset = std::numeric_limits<real_t>::max() - mx;
 			for (auto &v : values)
 				v += offset;
 			return values;
