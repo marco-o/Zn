@@ -6,7 +6,8 @@ set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h ../include/znlinea
                   ../include/zneratosthenes_sieve.h ../include/znquadratic_residue.h
 				  ../include/znquadratic_sieve0.h ../include/znquadratic_sieve.h
 				  ../include/znquadratic_sieve_base.h  ../include/znpolynomial.h
-				  ../include/znmpqs.h ../include/znsiqs.h ../include/znqueue.h)
+				  ../include/znmpqs.h ../include/znsiqs.h ../include/znqueue.h
+				  ../include/znelliptic_curve_fact.h)
 include_directories(../include)
 set (EXECUTABLE_OUTPUT_PATH ../bin)
 

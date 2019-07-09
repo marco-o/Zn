@@ -17,6 +17,7 @@
 #endif
 #endif
 #include "zngroup.h"
+#include "znelliptic_curve_fact.h"
 #include "zneratosthenes_sieve.h"
 #include "znquadratic_residue.h"
 #include "znquadratic_sieve0.h"
@@ -61,6 +62,30 @@ void test_self_initializing_quadratic_sieve(const large_int &n, const large_int 
 	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, m, base_size, order);
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+}
+
+template <class large_int, class small_int>
+void test_elliptic_curve(const large_int &n, small_int range)
+{
+	typedef typename elliptic_curve_t<large_int>::point_t point_t;
+	point_t pt{ 1, 1 };
+	elliptic_curve_t<large_int> ec(n);
+	auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
+	small_int exp = 1;
+	small_int limit = static_cast<small_int>(sqrt(std::numeric_limits<small_int>::max()));
+	for (small_int p = 2 ; p < range ; p++)
+	{
+		small_int exp1 = exp * p;
+		if (exp1 > limit)
+		{
+			if (ec.run(5, pt, exp))
+				break;
+			exp = p;
+		}
+		else
+			exp = exp1;
+	}
+	std::cout << "Factor = " << ec.factor() << std::endl;
 }
 
 void test_eratosthenes(int bound)
@@ -221,49 +246,53 @@ int main(int argc, char *argv[])
 		for (int i = 0; i < argc; i++)
 			if (strncmp(argv[i], "--eratosthenes=", 15) == 0)
 				test_eratosthenes(atoi(argv[i] + 15));
-			else if (strcmp(argv[i], "--zn") == 0)
-			{
-				test_zn<int>(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m));
+		else if (strcmp(argv[i], "--zn") == 0)
+		{
+			test_zn<int>(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m));
 #ifdef HAVE_BOOST
-				test_zn<cpp_int>(a, b, m);
+			test_zn<cpp_int>(a, b, m);
 #endif
-			}
+		}
 #ifdef HAVE_BOOST
-			else if (strncmp(argv[i], "--base-size=", 12) == 0)
-				base_size = atoi(argv[i] + 12);
-			else if (strncmp(argv[i], "--n=", 4) == 0)
-				n = argv[i] + 4;
-			else if (strncmp(argv[i], "--k=", 4) == 0)
-				k = atoi(argv[i] + 4);
-			else if (strcmp(argv[i], "--qs0") == 0)
-				test_quadratic_sieve0<long long, int>(atoll(n), static_cast<int>(base_size));
-			else if (strcmp(argv[i], "--qs") == 0)
-				test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
-			else if (strcmp(argv[i], "--qsc0") == 0)
-				test_quadratic_sieve0<cpp_int, long long>(cpp_int(n), base_size);
-			else if (strcmp(argv[i], "--qsc") == 0)
-				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
-			else if (strcmp(argv[i], "--mpqs") == 0)
-				test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
-			else if (strcmp(argv[i], "--mpqsl") == 0)
-				test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
-			else if (strcmp(argv[i], "--siqs") == 0)
-				test_self_initializing_quadratic_sieve<cpp_int, long long, unsigned char>(cpp_int(n), cpp_int(m1), base_size, k);
-			else if (strcmp(argv[i], "--siqsl") == 0)
-				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
-			else if (strcmp(argv[i], "--polytest") == 0)
-				test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);
+		else if (strncmp(argv[i], "--base-size=", 12) == 0)
+			base_size = atoi(argv[i] + 12);
+		else if (strncmp(argv[i], "--n=", 4) == 0)
+			n = argv[i] + 4;
+		else if (strncmp(argv[i], "--k=", 4) == 0)
+			k = atoi(argv[i] + 4);
+		else if (strcmp(argv[i], "--qs0") == 0)
+			test_quadratic_sieve0<long long, int>(atoll(n), static_cast<int>(base_size));
+		else if (strcmp(argv[i], "--qs") == 0)
+			test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
+		else if (strcmp(argv[i], "--qsc0") == 0)
+			test_quadratic_sieve0<cpp_int, long long>(cpp_int(n), base_size);
+		else if (strcmp(argv[i], "--qsc") == 0)
+			test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
+		else if (strcmp(argv[i], "--mpqs") == 0)
+			test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
+		else if (strcmp(argv[i], "--mpqsl") == 0)
+			test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+		else if (strcmp(argv[i], "--siqs") == 0)
+			test_self_initializing_quadratic_sieve<cpp_int, long long, unsigned char>(cpp_int(n), cpp_int(m1), base_size, k);
+		else if (strcmp(argv[i], "--siqsl") == 0)
+			test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+		else if (strcmp(argv[i], "--polytest") == 0)
+			test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);
 #ifdef HAVE_GMP
-			else if (strcmp(argv[i], "--qsg") == 0)
-				test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
-			else if (strcmp(argv[i], "--mpqsg") == 0)
-				test_multiple_polynomial_quadratic_sieve<mpz_int, long long, short>(mpz_int(n), mpz_int(m1), base_size);
+		else if (strcmp(argv[i], "--qsg") == 0)
+			test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
+		else if (strcmp(argv[i], "--mpqsg") == 0)
+			test_multiple_polynomial_quadratic_sieve<mpz_int, long long, short>(mpz_int(n), mpz_int(m1), base_size);
 #endif
 #endif
+		else if (strcmp(argv[i], "--ec") == 0)
+			test_elliptic_curve<cpp_int, long long>(cpp_int(n), base_size);
+		else if (strcmp(argv[i], "--ecl") == 0)
+			test_elliptic_curve<long long, int>(atoll(n), base_size);
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
-            test_zn_var(atoi(argv[i] + 5)) ;
-        else if (strcmp(argv[i], "--power") == 0)
-            test_power(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m)) ;
+        test_zn_var(atoi(argv[i] + 5)) ;
+		else if (strcmp(argv[i], "--power") == 0)
+			test_power(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m)) ;
 		else if (strcmp(argv[i], "--qr") == 0)
 			test_quadratic_residue<long long>(a, m, ps);
 #ifdef HAVE_BOOST
@@ -271,13 +300,13 @@ int main(int argc, char *argv[])
 			test_quadratic_residue<cpp_int>(cpp_int(a1), cpp_int(m1), cpp_int(ps1));
 #endif
 #ifdef HAVE_BOOST
-        else if (strcmp(argv[i], "--boost") == 0)
-            test_zn<cpp_int>(a, b, m) ;
+		else if (strcmp(argv[i], "--boost") == 0)
+			test_zn<cpp_int>(a, b, m) ;
 #endif
-        else if (strncmp(argv[i], "--a=", 4) == 0)
-            a = atoll(a1 = argv[i] + 4) ;
-        else if (strncmp(argv[i], "--b=", 4) == 0)
-            b = atoll(b1 = argv[i] + 4) ;
+		else if (strncmp(argv[i], "--a=", 4) == 0)
+			a = atoll(a1 = argv[i] + 4) ;
+		else if (strncmp(argv[i], "--b=", 4) == 0)
+			b = atoll(b1 = argv[i] + 4) ;
 		else if (strncmp(argv[i], "--m=", 4) == 0)
 			m = atoll(m1 = argv[i] + 4);
 		else if (strncmp(argv[i], "--ps=", 5) == 0)

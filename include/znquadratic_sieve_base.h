@@ -117,7 +117,7 @@ namespace zn
 				small_int prime_pwr = prime;
 				small_int prime1 = 1;
 				small_int prime_power_end = static_cast<small_int>(sqrt(std::numeric_limits<small_int>::max()/2));
-				for (int i = 0; (i < 10) && (prime_pwr < prime_power_end); i++)
+				for (int i = 0; (i < 2) && (prime_pwr < prime_power_end); i++)
 				{
 					small_int n1 = safe_cast<small_int>(n % prime_pwr);
 					small_int residue = quadratic_residue<small_int>(n1, prime_pwr, prime1); // actually a power of prime
