@@ -198,7 +198,32 @@ namespace zn
         }
         return b ;
     }
-    
+	// assumes b < a, a>0, b > 0
+	template <class T>
+	T euclidean_algorithm_ordered(const T &a, const T &b)
+	{
+		while (b > 1)
+		{
+			auto c = a % b;
+			a = b;
+			b = c;
+		}
+		return a;
+	}
+
+	template <class T>
+	T euclidean_algorithm(const T &a, const T &b)
+	{
+		if (a < 0)
+			a = -a;
+		if (b < 0)
+			b = -b;
+		if (a < b)
+			return euclidean_algorithm_ordered(b, a);
+		else
+			return euclidean_algorithm_ordered(a, b);
+	}
+
     template <class T>
     std::tuple<T, T, T> extended_euclidean_algorithm(const T &a, const T &b)
     {

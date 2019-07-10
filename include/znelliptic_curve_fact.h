@@ -5,6 +5,127 @@
 
 namespace zn
 {
+	template <class T, int N>
+	struct rho_poly_t
+	{
+		static T apply(const T &t, const T &n)
+		{
+			return rho_poly_t<T, N - 1>::apply((t * t + 1) % n, n);
+		}
+	};
+	template <class T>
+	struct rho_poly_t<T, 1>
+	{
+		static T apply(const T &t, const T &n)
+		{
+			return (t * t + 1) % n;
+		}
+	};
+	template <class large_int>
+	large_int pollards_rho(const large_int &n, int count, int seed = 2)
+	{
+		large_int d;
+		large_int x = seed;
+		large_int y = x;
+		const int iter = 5;
+		for (int i = 0 ; i < count ; i++)
+		{
+			x = rho_poly_t<large_int, iter>::apply(x, n);
+			y = rho_poly_t<large_int, iter * 2>::apply(y, n);
+			d = gcd(abs(x - y), n);
+			if (d != 1)
+				break;
+		}
+		if (d < n)
+			return d;
+		else
+			return 0;
+	}
+
+	template <class large_int>
+	class elliptic_curve_projective_t
+	{
+	public:
+		struct point_t
+		{
+			large_int x;
+			large_int z;
+		};
+		elliptic_curve_projective_t(const large_int &n) : n_(n) 
+		{}
+		void init(const large_int &a, const point_t &pt)
+		{
+			a_ = a;
+			auto ext = extended_euclidean_algorithm<large_int>(n_, 4);
+			a24_ = ((a + 2) * std::get<2>(ext)) % n_ ;
+#ifdef _DEBUG
+			y_ = 1;
+			auto x2 = (pt.x * pt.x) % n_;
+			b_ = (x2 * (pt.x + a_) + pt.x) % n_;
+#endif
+		}
+#ifdef _DEBUG
+		void test(const point_t &pt)
+		{
+			point_t p2, p3, p4, p4a;
+			//verify(pt, pt);
+			add(pt, pt, p2);
+			//verify(p2, pt);
+			add(pt, p2, p3);
+			//verify(p3, pt);
+			add(pt, p3, p4);
+			add(p2, p2, p4a);
+		}
+#endif
+	private:
+		void add(const point_t &p, const point_t &q, point_t &result)
+		{
+			if (p.x * q.z == q.x * p.z) // double
+			{
+				auto s = p.x + p.z;
+				auto d = p.x - p.z;
+				auto xz = (s * s - d * d) % n_;
+				auto x1 = (s * d) % n_;
+				auto z1 = (d * d + a24_ * xz) % n_;
+				result.x = (x1 * x1) % n_;
+				result.z = (xz * z1) % n_;
+			}
+			else  // add
+			{
+				auto dp = p.x - p.z;
+				auto sp = p.x + p.z;
+				auto dq = q.x - q.z;
+				auto sq = q.x + q.z;
+				auto dpsq = dp * sq;
+				auto spdq = sp * dq;
+				auto x1 = (dpsq + spdq) % n_;
+				auto z1 = (dpsq - spdq) % n_;
+				x1 = (x1 * x1) % n_;
+				z1 = (z1 * z1) % n_;
+				result.x = ((p.z - q.z) * x1) % n_;
+				result.z = ((p.x - q.x) * z1) % n_;
+			}
+		}
+#ifdef _DEBUG
+		bool verify(const point_t &pt, const point_t &p1)
+		{
+			auto y1 = (pt.x * p1.x + 1) % n_;
+			auto dx = pt.x - p1.x; 
+			y1 = = y1 * (y1 + a_ - a) % n_ - 2 * a - 
+			auto lhs = b_ * pt.z;
+			auto xz = (pt.x * pt.z) % n_;
+			auto x2 = (pt.x * pt.x) % n_;
+			auto rhs = pt.x * x2 + xz * ((a_ * pt.x) % n_ + pt.z);
+			return (lhs - rhs) % n_ == 0;
+		}
+		large_int b_;
+		large_int y_;
+#endif
+		large_int a24_;
+		large_int a_;
+		large_int n_;
+	};
+
 	template <class large_int>
 	class elliptic_curve_t
 	{
