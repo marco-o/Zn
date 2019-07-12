@@ -200,9 +200,9 @@ namespace zn
     }
 	// assumes b < a, a>0, b > 0
 	template <class T>
-	T euclidean_algorithm_ordered(const T &a, const T &b)
+	T euclidean_algorithm_ordered(T a, T b)
 	{
-		while (b > 1)
+		while (b > 0)
 		{
 			auto c = a % b;
 			a = b;
@@ -215,13 +215,13 @@ namespace zn
 	T euclidean_algorithm(const T &a, const T &b)
 	{
 		if (a < 0)
-			a = -a;
+			return euclidean_algorithm<T>(-a, b);
 		if (b < 0)
-			b = -b;
+			return euclidean_algorithm<T>(a, -b);
 		if (a < b)
-			return euclidean_algorithm_ordered(b, a);
+			return euclidean_algorithm_ordered<T>(b, a);
 		else
-			return euclidean_algorithm_ordered(a, b);
+			return euclidean_algorithm_ordered<T>(a, b);
 	}
 
     template <class T>

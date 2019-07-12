@@ -65,9 +65,21 @@ void test_self_initializing_quadratic_sieve(const large_int &n, const large_int 
 }
 
 template <class large_int>
-void test_rho(const large_int &n, int count)
+void test_pollard_rho(const large_int &n, int count)
 {
 	large_int p1 = pollards_rho(n, count);
+	auto p2 = n / p1;
+	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+	exit(0);
+}
+
+template <class large_int, class small_int = long>
+void test_pollard_p1(const large_int &n, int count)
+{
+	pollard_p1_t<large_int, small_int> pollard_p1;
+	pollard_p1.init(safe_cast<small_int>(n));
+
+	large_int p1 = pollard_p1.fact(n, count);
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 	exit(0);
@@ -315,9 +327,13 @@ int main(int argc, char *argv[])
 		else if (strcmp(argv[i], "--ech") == 0)
 			test_elliptic_curve_homo<long long>(atoll(n));
 		else if (strcmp(argv[i], "--rhol") == 0)
-			test_rho(atoll(n), atoi(count));
+			test_pollard_rho(atoll(n), atoi(count));
 		else if (strcmp(argv[i], "--rho") == 0)
-			test_rho(cpp_int(n), atoi(count));
+			test_pollard_rho(cpp_int(n), atoi(count));
+		else if (strcmp(argv[i], "--p1l") == 0)
+			test_pollard_p1<long long, long>(atoll(n), atoi(count));
+		else if (strcmp(argv[i], "--p1") == 0)
+			test_pollard_p1<cpp_int, long long>(cpp_int(n), atoi(count));
 		else if (strncmp(argv[i], "--zv=", 5) == 0)
 			test_zn_var(atoi(argv[i] + 5)) ;
 		else if (strcmp(argv[i], "--power") == 0)

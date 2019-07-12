@@ -5,6 +5,54 @@
 
 namespace zn
 {
+	template <class large_int, class small_int = long>
+	class pollard_p1_t
+	{
+	public:
+		pollard_p1_t(void) {}
+		void init(small_int bound)
+		{
+			double logb = std::log(static_cast<double>(bound));
+			int  b1 = safe_cast<int>(pow(bound, 0.33));
+			std::vector<small_int> primes = eratosthenes_sieve<small_int, int>(b1);
+			small_int exp1 = 1;
+			for (auto prime : primes)
+			{
+				int exp = static_cast<int>(logb / std::log(static_cast<double>(prime)) + 0.5);
+				for (int j = 0; j < exp; j++)
+					if (exp1 < std::numeric_limits<small_int>::max() / prime)
+						exp1 *= prime;
+					else
+					{
+						exp_.push_back(exp1);
+						exp1 = prime;
+					}
+			}
+			if (exp1 != 1)
+				exp_.push_back(exp1);
+		}
+		large_int fact(const large_int &n, small_int b)
+		{
+			large_int pw = b;
+			size_t size = exp_.size();
+			for (size_t i = 0 ; i < size ; i++)
+			{
+				pw = powm<large_int>(pw, exp_[i], n);
+				if (i % 4 == 0)
+				{
+					auto g = euclidean_algorithm<large_int>(pw - 1, n);
+					if (g == n)
+						return 1;
+					else if (g > 1)
+						return g;
+				}
+			}
+			return euclidean_algorithm<large_int>(pw - 1, n);
+		}
+	private:
+		std::vector<small_int> exp_;
+	};
+
 	template <class T, int N>
 	struct rho_poly_t
 	{
