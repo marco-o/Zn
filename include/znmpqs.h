@@ -280,7 +280,7 @@ namespace zn
 				LOG_ERROR << "Found only " << smooths.size() << log_base_t::newline_t();
 				return 1;
 			}
-#ifdef HAVE_CANDIDATE_ANALYSYS
+#ifdef HAVE_CANDIDATE_ANALYSYS1
 			inherit_t::print_analysis(base_.rbegin()->prime(0));
 #endif
 			inherit_t::erase_base(base_, smooths, n_);

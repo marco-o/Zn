@@ -96,7 +96,7 @@ namespace zn
 	class quadratic_sieve_base_t
 	{
 	public:
-		enum smooth_status_e { smooth_valid_e, smooth_candidate_e, smooth_double_e, smooth_idle_e };
+		enum smooth_status_e { smooth_valid_e, smooth_candidate_e, smooth_double_e, smooth_unfactored_e, smooth_idle_e };
 		struct base_t
 		{
 			std::vector<small_int>	prime_;
