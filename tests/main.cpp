@@ -93,7 +93,9 @@ void test_elliptic_curve_homo(const large_int &n)
 	point_t pt{ 1, 1 };
 	elliptic_curve_projective_t<large_int> ec(n);
 	ec.init(6, pt);
+#ifdef _DEBUG
 	ec.test(pt);
+#endif
 }
 
 template <class large_int, class small_int>

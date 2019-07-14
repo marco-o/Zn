@@ -24,14 +24,14 @@
 
 namespace zn
 {
-#ifdef HAVE_DOUBLE_LARGE_PRIME
 	template <class smooth_t>
 	class relations_graph_t
 	{
 	public:
 		typedef size_t id_t;
 		typedef int color_t;
-		typedef typename smooth_t::small_int small_int ;
+		typedef typename smooth_t::small_int small_int;
+		typedef typename smooth_t::large_int large_int;
 		struct vertex_t
 		{
 			color_t				color = 0; // of connected components
@@ -40,15 +40,17 @@ namespace zn
 		typedef std::map<small_int, vertex_t> vertex_map_t;
 		typedef typename vertex_map_t::iterator vertex_descriptor_t;
 
-		relations_graph_t(void)
+		relations_graph_t(const large_int &n) : n_(n)
 		{
 			// insert the '1' vertex
 			vertex_t v;
 			v.color = 1;
 			vertexes_[1] = v;
+			connected_[1] = 1;
 		}
 		size_t size(void) { return edges_.size(); }
-		void add_smooth(const smooth_t &smooth)
+		template <class base_ref_t>
+		bool add_smooth(smooth_t &smooth, const std::vector<base_ref_t> &base)
 		{
 			auto edge_id = edges_.size();
 			edges_.push_back(smooth);
@@ -90,8 +92,16 @@ namespace zn
 					}
 					else
 					{// found a cycle!!
+						it0->second.edges.pop_back();
+						it1->second.edges.pop_back();
+						edges_.pop_back();
+						int edge_id = *it0->second.edges.begin();
+						auto &edge = edges_[edge_id];
+						smooth.compose(edge, n_, base);
+						return true;
 					}
 			}
+			return false;
 		}
 	private:
 		void merge_connected_as(vertex_descriptor_t &v, int color)
@@ -122,8 +132,8 @@ namespace zn
 		std::vector<smooth_t>	edges_;
 		std::map<int, int>		connected_; // maps id of connected components to its size
 		int						color_ = 2; // used to mark connected components
+		large_int				n_;
 	};
-#endif
 
 
 	template <class large_int, class small_int, class real>
@@ -189,9 +199,35 @@ namespace zn
 				if (f == 1)
 					s = inherit_t::smooth_valid_e;
 				else if (f < info.thrs)
+				{
+					large_f[0] = safe_cast<small_int>(f);
 					s = inherit_t::smooth_candidate_e;
+				}
 				else
 				{
+#ifdef HAVE_DOUBLE_LARGE_PRIME
+					if (large_composite(f))
+					{
+						int count = 200; // TODO: how to determine this?
+						auto p1 = safe_cast<small_int>(pollards_rho(f, count, 2));
+						if (p1 > 1)
+						{
+							auto p2 = safe_cast<small_int>(f / p1);
+							if (p1 < p2)
+							{
+								large_f[0] = p1;
+								large_f[1] = p2;
+							}
+							else
+							{
+								large_f[0] = p2;
+								large_f[1] = p1;
+							}
+							s = inherit_t::smooth_double_e;
+							return;
+						}
+					}
+#endif
 					s = inherit_t::smooth_idle_e;
 				}
 			}
@@ -218,21 +254,44 @@ namespace zn
 				large_int b = (axb > sqr ? axb - sqr : sqr - axb);
 				return gcd(b, n);
 			}
-			void compose(const smooth_t &rhs, 
+			bool compose(const smooth_t &rhs, 
 				         const large_int &n, 
 				         const std::vector<base_ref_t> &base,
 						 std::vector<int> *erased = nullptr,
 						 std::vector<int> *added = nullptr)
 			{
-				axb = (axb * rhs.axb) % n;
-				sqr = (sqr * rhs.sqr) % n;
-				for (int i = 0; i < static_cast<int>(s); i++)
-					for (int j = 0; j < static_cast<int>(rhs.s); j++)
+				small_int large[4];
+				int index = 0;
+				int i = 0;
+				int i_rhs = 0;
+				large_int sqr1 = sqr;
+				while (i < static_cast<int>(s) && i_rhs < static_cast<int>(rhs.s))
+					if (large_f[i] < rhs.large_f[i_rhs])
+						large[index++] = large_f[i++];
+					else if (large_f[i] > rhs.large_f[i_rhs])
+						large[index++] = rhs.large_f[i_rhs++];
+					else // equal!
 					{
-						sqr = (sqr * large_f[i]) % n;
-						large_f[i] = 1;
+						sqr1 = (sqr1 * large_f[i]) % n;
+						i++;
+						i_rhs++;
 					}
-
+				while (i < static_cast<int>(s))
+					large[index++] = large_f[i++];
+				while (i < static_cast<int>(rhs.s))
+					large[index++] = rhs.large_f[i++];
+#ifdef HAVE_DOUBLE_LARGE_PRIME
+				if (index > 2)
+					return false;
+#else
+				if (index > 0)
+					return false;
+#endif
+				for (int i = 0; i < index; i++)
+					large_f[i] = large[i];
+				s = static_cast<smooth_status_e>(index);
+				axb = (axb * rhs.axb) % n;
+				sqr = (sqr1 * rhs.sqr) % n;
 				sign_bit ^= rhs.sign_bit;
 				std::vector<int>		fact;
 				auto it1 = factors_.begin();
@@ -263,7 +322,7 @@ namespace zn
 				if (it2 != end2)
 					fact.insert(fact.end(), it2, end2);
 				factors_ = fact;
-				s = inherit_t::smooth_valid_e;
+				return true;
 			}
 			void remap_factors(const std::vector<int> &fmap)
 			{
@@ -312,7 +371,6 @@ namespace zn
 			std::vector<real> init;
 			real			  offset;
 		};
-		typedef std::map<large_int, smooth_t> candidates_map_t;
 		typedef std::vector<smooth_t> smooth_vector_t;
 		self_initializing_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size) : n_(n), m_(m)
 		{
@@ -357,11 +415,7 @@ namespace zn
 		}
 		large_int process(int order)
 		{
-#ifdef HAVE_DOUBLE_LARGE_PRIME
-			relations_graph_t<smooth_t> candidates;
-#else
-			candidates_map_t candidates;
-#endif
+			relations_graph_t<smooth_t> candidates(n_);
 			smooth_vector_t smooths;
 			std::vector<prime_info_t<small_int>> base_info;
 			for (auto &item : base_)
@@ -427,7 +481,7 @@ namespace zn
 			while (!smooths_found_.empty())
 			{
 				auto chunk = smooths_found_.pop();
-				inherit_t::process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 			}
 #endif
 			LOG_INFO << log_base_t::newline_t();
@@ -548,7 +602,7 @@ namespace zn
 					else
 					{
 #ifdef HAVE_DOUBLE_LARGE_PRIME
-						if (s.large_composite())
+						if (s.type() == smooth_double_e)
 							smooth_large_composite_++;
 #endif
 						smooth_failures_++;
@@ -579,7 +633,6 @@ namespace zn
 			}
 		}
 #endif
-#ifdef HAVE_DOUBLE_LARGE_PRIME
 		int  process_candidates_chunk(std::vector<base_ref_t> &base,
  									  relations_graph_t<smooth_t>  &relations,
 									  std::vector<smooth_t> &chunk,
@@ -588,11 +641,29 @@ namespace zn
 		{
 			for (auto &smooth : chunk)
 			{
-				relations.add_smooth(smooth);
+				switch (smooth.type())
+				{
+				case smooth_valid_e:
+					register_smooth(smooths, smooth);
+					break;
+				case smooth_candidate_e:
+				case smooth_double_e:
+					if (relations.add_smooth(smooth, base))
+						register_smooth(smooths, smooth);
+					break;
+				default: //, smooth_idle_e
+					break;
+				}
 			}
 			return 0;
 		}
-#endif
+		void register_smooth(std::vector<smooth_t> &smooths, const smooth_t &smooth)
+		{
+			int si = static_cast<int>(smooths.size());
+			for (auto f : smooth.factors())
+				base_[f].smooths.push_back(si);
+			smooths.push_back(smooth);
+		}
 		large_int					smooth_thrs_; // square of last element of base
 		large_int					n_; // number to factor
 		small_int					m_; // size of sieving interval
