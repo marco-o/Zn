@@ -96,7 +96,7 @@ namespace zn
 	class quadratic_sieve_base_t
 	{
 	public:
-		enum smooth_status_e { smooth_valid_e, smooth_candidate_e, smooth_double_e, smooth_unfactored_e, smooth_idle_e };
+		enum smooth_status_e { smooth_valid_e, smooth_candidate_e, smooth_double_e, smooth_unfactored_e, smooth_huge_prime_e, smooth_idle_e };
 		struct base_t
 		{
 			std::vector<small_int>	prime_;
@@ -116,7 +116,7 @@ namespace zn
 				base_t result(prime);
 				small_int prime_pwr = prime;
 				small_int prime1 = 1;
-				small_int prime_power_end = static_cast<small_int>(sqrt(std::numeric_limits<small_int>::max()/2));
+				small_int prime_power_end = static_cast<small_int>(std::sqrt(std::numeric_limits<small_int>::max()/2));
 				for (int i = 0; (i < 2) && (prime_pwr < prime_power_end); i++)
 				{
 					small_int n1 = safe_cast<small_int>(n % prime_pwr);

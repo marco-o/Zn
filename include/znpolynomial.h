@@ -236,7 +236,7 @@ namespace zn
 			                   const std::vector<prime_info_t<small_int>> &base)
 		{
 			large_int n1 = 2 * n;
-			large_int a2 = safe_cast<large_int>(sqrt(n1)) / m;
+			large_int a2 = safe_cast<large_int>(sqrt(static_cast<double>(n1))) / m;
 			polynomial_seed_t result;
 			target_ = real_op_t<float>::log1(a2) / 2;
 			/*
@@ -245,7 +245,7 @@ namespace zn
 			*/
 			small_int largest = base.rbegin()->prime;
 			auto largest_log = real_op_t<float>::log1(largest);
-			int min_order = static_cast<int>(std::ceil(target_ / largest_log));
+			int min_order = std::max(2, static_cast<int>(std::ceil(target_ / largest_log)));
 			size_t size = base.size();
 			for (size_t i = 0 ; i < size ; i++)
 				base_.push_back(base_t(base[i]));
@@ -373,7 +373,7 @@ namespace zn
 		const poly_t   &poly_;
 		small_int		m_;
 	public:
-		typedef long run_int_t;
+		typedef small_int run_int_t;
 		struct sieve_run_t
 		{
 			run_int_t p; // may be a power of prime

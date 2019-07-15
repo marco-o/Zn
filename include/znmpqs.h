@@ -200,7 +200,7 @@ namespace zn
 				<< ", largest = " << largest_sieving_prime << " (" << valid_for_a << ")" << log_base_t::newline_t();
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
-			if (m_ < sqrt(largest_sieving_prime))
+			if (m_ < std::sqrt(largest_sieving_prime))
 				m_ = largest_sieving_prime * 2;
 		}
 		large_int process(void)
@@ -350,7 +350,7 @@ namespace zn
 			return collect_smooth(poly, values);
 		}
 		smooth_vector_t  collect_smooth(const polynomial_t<large_int, small_int> &poly,
-			const std::vector<real> &values)
+										const std::vector<real> &values)
 		{
 			std::vector<smooth_t> result;
 			real sieve_thrs = -2 * base_.rbegin()->logp_ - real_op_t<real>::unit(); // small prime variation

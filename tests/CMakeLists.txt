@@ -38,7 +38,7 @@ else (Boost_UNIT_TEST_FRAMEWORK_FOUND)
     message("BOOST not found")
 endif (Boost_UNIT_TEST_FRAMEWORK_FOUND)
 
-add_executable(main main.cpp logger.cpp ${COMMON_HEADERS})
+add_executable(main main.cpp logger.cpp prime-test.cpp ${COMMON_HEADERS})
 
 if (Boost_UNIT_TEST_FRAMEWORK_FOUND)
 	if (GMP_ROOT)

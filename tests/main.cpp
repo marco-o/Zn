@@ -106,7 +106,7 @@ void test_elliptic_curve(const large_int &n, small_int range)
 	elliptic_curve_t<large_int> ec(n);
 	auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
 	small_int exp = 1;
-	small_int limit = static_cast<small_int>(sqrt(std::numeric_limits<small_int>::max()));
+	small_int limit = static_cast<small_int>(std::sqrt(static_cast<double>(std::numeric_limits<small_int>::max())));
 	for (small_int p = 2 ; p < range ; p++)
 	{
 		small_int exp1 = exp * p;

@@ -21,17 +21,18 @@
 #include "znpolynomial.h"
 #include "znelliptic_curve_fact.h"
 
-
 namespace zn
 {
+	bool rb_test(const boost::multiprecision::cpp_int &);
 #ifdef HAVE_CANDIDATE_ANALYSYS
 	struct analysis_t
 	{
 		int smooth_attempts = 0;
-		int smooth_failures = 0;
+		int smooth_idle = 0;
 #ifdef HAVE_DOUBLE_LARGE_PRIME
 		int smooth_large_composite = 0;
 		int smooth_unfactored = 0;
+		int smooth_huge_prime = 0;
 #endif
 	};
 #endif
@@ -111,11 +112,11 @@ namespace zn
 							path_to1(smooth, it1, base, false);
 							if (smooth.type() != 0)
 								std::cout << "Bad cycle\n";
-
 						}
 						else
 						{
 							std::cout << "TODO: cycle in Oort belt\n";
+							return false;
 						}
 						return true;
 					}
@@ -209,6 +210,7 @@ namespace zn
 		{
 			poly_t		poly;
 			large_int	thrs;
+			large_int	thrs3;
 			large_int	n;
 			bool		have_double;
 			std::vector<typename sieve_t::sieve_run_t> runs;
@@ -255,7 +257,12 @@ namespace zn
 							sqr = (sqr * p) % info.n;
 #ifdef _DEBUG
 					if (power == 0)
+					{
+						auto r2 = safe_cast<small_int>(info.n % run.p);
+						auto r1 = run.r * run.r % run.p;
 						std::cout << "Boh.. " << run.p << "\n";
+
+					}
 #endif
 					if (power & 1)
 						factors_.push_back(run.bix);
@@ -272,9 +279,11 @@ namespace zn
 				else if (info.have_double)
 				{
 #ifdef HAVE_DOUBLE_LARGE_PRIME
-					if (large_composite(f))
+					if (f > info.thrs3)
+						s = inherit_t::smooth_idle_e;
+					else if (!custom_prime_test(f))
 					{
-						int count = 200; // TODO: how to determine this?
+						int count = 400; // TODO: how to determine this?
 						auto p1 = safe_cast<small_int>(pollards_rho(f, count, 2));
 						if (p1 > 1)
 						{
@@ -294,6 +303,8 @@ namespace zn
 						else
 							s = inherit_t::smooth_unfactored_e;
 					}
+					else
+						s = inherit_t::smooth_huge_prime_e;
 #endif
 				}
 			}
@@ -418,13 +429,45 @@ namespace zn
 				s1 = (s1 - axb * axb) % n;
 				return s1 == 0;
 			}
-			bool large_composite(large_int f) const
+			bool custom_prime_test(const large_int &n)
 			{
-				int seeds[] = { 7, 43};
-				for (auto s : seeds)
-					if (powm<large_int>(s, f - 1, f) != 1)
-						return true;
-				return false;
+				large_int nm1 = n - 1;
+				//
+				// Begin with a single Fermat test - it excludes a lot of candidates:
+				//
+				large_int q(228), x, y; // We know n is greater than this, as we've excluded small factors
+				x = powm(q, nm1, n);
+				if (x != 1u)
+					return false;
+
+				q = n - 1;
+				unsigned k = lsb(q);
+				q >>= k;
+
+				//
+				// Execute the trials:
+				//
+				int seeds[] = { 2, 5, 19, 41 };
+				for (auto x : seeds)
+				{
+					y = powm<large_int>(x, q, n);
+					unsigned j = 0;
+					while (true)
+					{
+						if (y == nm1)
+							break;
+						if (y == 1)
+						{
+							if (j == 0)
+								break;
+							return false; // test failed
+						}
+						if (++j == k)
+							return false; // failed
+						y = (y * y) % n; // powm<large_int>(y, 2, n);
+					}
+				}
+				return true;  // Yeheh! probably prime.
 			}
 		private:
 			std::vector<int>		factors_; // indexes into base array
@@ -440,6 +483,8 @@ namespace zn
 			std::vector<real> values;
 			std::vector<real> init;
 			real			  offset;
+			large_int         thrs2;
+			large_int		  thrs3;
 			bool			  have_double;
 		};
 		typedef std::vector<smooth_t> smooth_vector_t;
@@ -481,7 +526,7 @@ namespace zn
 				     << ", largest = " << largest_sieving_prime << " ("<< valid_for_a << ")" << log_base_t::newline_t() ;
 			smooth_thrs_ = largest_sieving_prime;
 			smooth_thrs_ *= smooth_thrs_;
-			if (m_ < sqrt(largest_sieving_prime))
+			if (m_ < std::sqrt(largest_sieving_prime))
 				m_ = largest_sieving_prime * 2;
 		}
 		large_int process(int order, bool have_double)
@@ -509,8 +554,12 @@ namespace zn
 			}
 #else
 			polynomial_siqs_t<large_int, small_int> poly(generator().index, base_info, n_);
+
 			sieve_stuff_t sieve_stuff;
 			sieve_stuff.have_double = have_double;
+			large_int largest_prime = base_.rbegin()->prime(0);
+			sieve_stuff.thrs2 = largest_prime * largest_prime;
+			sieve_stuff.thrs3 = sieve_stuff.thrs2 * largest_prime;
 			sieve_stuff.init = sieve_t(poly, static_cast<size_t>(m_)).fill(sieve_stuff.offset);
 			sieve_stuff.values = sieve_stuff.init;
 #endif
@@ -558,13 +607,15 @@ namespace zn
 #endif
 			LOG_INFO << log_base_t::newline_t()
 #ifdef HAVE_CANDIDATE_ANALYSYS
-					 << "Attempted " << analysis_.smooth_attempts
-				     << ", failed " << analysis_.smooth_failures
+					 << "Attempted " << analysis_.smooth_attempts << "\n"
 #ifdef HAVE_DOUBLE_LARGE_PRIME
-					  << ", of which "  << analysis_.smooth_large_composite
-					  << " (" << analysis_.smooth_large_composite * 100 / analysis_.smooth_failures << "%) are composite "
+					  << "Detail: "  << analysis_.smooth_huge_prime
+					  << " (" << analysis_.smooth_huge_prime * 100 / analysis_.smooth_attempts << "%) likely prime "
+					  << ", "  << analysis_.smooth_large_composite
+					  << " (" << analysis_.smooth_large_composite * 100 / analysis_.smooth_attempts << "%) composite "
 					  << " and " << analysis_.smooth_unfactored
-					  << " (" << analysis_.smooth_unfactored * 100 / (analysis_.smooth_large_composite + 1) << "%) unfactored "
+					  << " (" << analysis_.smooth_unfactored * 100 / analysis_.smooth_attempts << "%) unfactored "
+				  	  << " left out: " << analysis_.smooth_idle
 #endif
 #endif // HAVE_DOUBLE_LARGE_PRIME
 				     << "\n";
@@ -627,8 +678,7 @@ namespace zn
 		{
 			// build vector for sieving
 			smooth_vector_t result;
-			large_int largest_prime = base_.rbegin()->prime(0);
-			smooth_info_t info = { poly, largest_prime * largest_prime , n_, sieve_stuff.have_double};
+			smooth_info_t info = { poly, sieve_stuff.thrs2, sieve_stuff.thrs3, n_, sieve_stuff.have_double};
 			info.runs.reserve(base_.size() * 2);
 			size_t count = info.poly.count();
 			for (size_t c = 0; c < count; c++)
@@ -644,7 +694,7 @@ namespace zn
 				for (auto &run : info.runs)
 				{
 					size_t index = static_cast<size_t>(m_ + run.x) % run.p;
-					for (size_t i = index; i < size; i += run.p)
+					for (size_t i = index; i < size; i += static_cast<size_t>(run.p))
 						sieve_stuff.values[i] -= run.lg;
 				}
 				collect_smooth(info, sieve_stuff, result);
@@ -655,8 +705,10 @@ namespace zn
 							const sieve_stuff_t &sieve,
 							smooth_vector_t &result)
 		{
-			real sieve_thrs = (info.have_double ? 3 : 2) * base_.rbegin()->logp_ + 
-				               sieve.offset + 5 * real_op_t<real>::unit(); // small prime variation
+			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 5 * real_op_t<real>::unit(); // small prime variation
+			if (info.have_double)
+				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
+
 			size_t size = sieve.values.size();
 			for (size_t i = 0; i < size; i++)
 				if (sieve.values[i] < sieve_thrs)
@@ -679,10 +731,19 @@ namespace zn
 					else
 					{
 #ifdef HAVE_DOUBLE_LARGE_PRIME
-						if (s.type() == smooth_unfactored_e)
+						switch (s.type())
+						{
+						case smooth_unfactored_e:
 							analysis_.smooth_unfactored++;
+							break;
+						case smooth_huge_prime_e:
+							analysis_.smooth_huge_prime++;
+							break;
+						default:
+							analysis_.smooth_idle++;
+							break;
+						}
 #endif
-						analysis_.smooth_failures++;
 					}
 				}
 		}
@@ -702,7 +763,7 @@ namespace zn
 						sieve_stuff.values = sieve_stuff.init;
 					}
 					auto chunk = sieve(poly, sieve_stuff);
-					smooths_found_.push(chunk);
+					F.push(chunk);
 				}
 			}
 			catch (std::exception &exc)

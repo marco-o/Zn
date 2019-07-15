@@ -171,7 +171,7 @@ namespace zn
 		large_int sieve(void)
 		{
 			sieve_range_t range;
-			range.first = safe_cast<large_int>(sqrt(n_) + 1);
+			range.first = safe_cast<large_int>(std::sqrt(static_cast<double>(n_)) + 1);
 			range.second = static_cast<small_int>(std::pow(base_.size(), 2.5));
 #ifdef _M_X64
 			const size_t max_mem = 4 * 1024 * 1048576LL; // 4GB
