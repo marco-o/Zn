@@ -50,7 +50,7 @@ namespace zn
 			color_t				color = 0; // of connected components
 			size_t				dist ;  // from '1'
 			std::list<size_t>	edges; // index into edges array
-			vertex_t(size_t c = 0, size_t d = std::numeric_limits<size_t>::max() / 2) : color(c), dist(d) {}
+			vertex_t(int c = 0, size_t d = std::numeric_limits<size_t>::max() / 2) : color(c), dist(d) {}
 		};
 		typedef std::map<small_int, vertex_t> vertex_map_t;
 		typedef typename vertex_map_t::iterator vertex_descriptor_t;
@@ -196,6 +196,12 @@ namespace zn
 		large_int				n_;
 	};
 
+	struct qs_config_t
+	{
+		int multiplier = 0; 
+		int order = 2; // numer of primes in 'a'
+		int base_size = 0; // number of primes (approximate) in base
+	};
 
 	template <class large_int, class small_int, class real>
 	class self_initializing_quadratic_sieve_t : public quadratic_sieve_base_t<large_int, small_int, real>
@@ -239,14 +245,35 @@ namespace zn
 				{
 					const auto &run = info.runs[j];
 #if 1
-					if ((run.bix < 0) || ((x - run.x) % run.p != 0))
+					bool plus = ((x - run.x[0]) % run.p == 0);
+					bool minus = ((x - run.x[1]) % run.p == 0);
+					//if (run.a != 0)
+					if ((run.bix < 0) || !(plus || minus))
 					{
-#ifdef _DEBUG1
+#ifdef _DEBUG
 						large_int f1 = f;
 						if (divide_qr1(f1, large_int(run.p)))
-							std::cout << "Hmm   " << run.p << "\n";
+							std::cout << "Missed " << run.p 
+							          << ", b = " << run.b 
+							          << ", c = " << run.r[0] 
+							          << "\n";
 #endif
 						continue;
+					}
+#endif
+#if 0
+					if (run.p == 17)
+					{
+						std::cout << "p = " << run.p 
+								  << ", a = " << safe_cast<small_int>(info.poly.a % run.p)
+							      << ", b = " << safe_cast<small_int>(info.poly.b % run.p)
+							      << ", c = " << safe_cast<small_int>(info.poly.c % run.p) << "\n";
+						for (int i = 0; i < run.p; i++)
+						{
+							auto f1 = info.poly.eval(i);
+							std::cout << "x = " << i << ", y = " << safe_cast<small_int>(f1 % run.p) << "\n";
+						}
+						std::cout << std::endl;
 					}
 #endif
 					int rexp = 0;
@@ -257,12 +284,29 @@ namespace zn
 							sqr = (sqr * p) % info.n;
 #ifdef _DEBUG
 					if (power == 0)
-					{
-						auto r2 = safe_cast<small_int>(info.n % run.p);
-						auto r1 = run.r * run.r % run.p;
-						std::cout << "Boh.. " << run.p << "\n";
-
-					}
+						if (run.a)
+						{
+							auto r2 = safe_cast<small_int>(info.n % run.p);
+							auto r1 = run.r[0] * run.r[0] % run.p;
+							std::cout << "Expected " << run.p << "\n";
+						}
+						else
+						{
+							std::cout << "p = " << run.p
+								<< ", a = " << safe_cast<small_int>(info.poly.a % run.p)
+								<< ", b = " << safe_cast<small_int>(info.poly.b % run.p)
+								<< ", c = " << safe_cast<small_int>(info.poly.c % run.p) << "\n";
+							std::cout << "f = 2bx + c?\n";
+							std::cout << "p = " << run.p << ", b = " << run.b << " c = " << run.r[0] << "\n";
+							for (int i = 0; i < run.p ; i++)
+							{
+								auto fi = info.poly.eval(i);
+								std::cout << "x = " << i << ", f = " << safe_cast<small_int>(fi % run.p) << "\n";
+							}
+							std::cout << std::endl;
+						}
+//					if (run.a == 0 && power > 0)
+//						std::cout << "Works\n";
 #endif
 					if (power & 1)
 						factors_.push_back(run.bix);
@@ -503,10 +547,7 @@ namespace zn
 			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
 #ifdef HAVE_MULTIPLIER
-			if (k == 0)
-				k_ = premultiplier(n, primes);
-			else 
-				k_ = k;
+			k_ = premultiplier(n, primes);
 			LOG_INFO << "Premultiplier = " << k_ << log_base_t::newline_t();
 			n_ *= k_;
 #endif
@@ -627,6 +668,10 @@ namespace zn
 #ifdef HAVE_CANDIDATE_ANALYSYS1
 			inherit_t::print_analysis(base_.rbegin()->prime(0));
 #endif
+#ifdef _DEBUG
+			for (auto s : poly_stat_)
+				LOG_INFO << "\t" << s / static_cast<double>(poly_count_) << log_base_t::newline_t();
+#endif
 			inherit_t::erase_base(base_, smooths, n_);
 			linear_solver_t solver;
 			auto basemix = solver.solve(smooths, base_.size() + 1);
@@ -681,6 +726,11 @@ namespace zn
 			smooth_info_t info = { poly, sieve_stuff.thrs2, sieve_stuff.thrs3, n_, sieve_stuff.have_double};
 			info.runs.reserve(base_.size() * 2);
 			size_t count = info.poly.count();
+#ifdef _DEBUG
+			if (poly_stat_.empty())
+				poly_stat_.resize(count);
+			poly_count_++;
+#endif
 			for (size_t c = 0; c < count; c++)
 			{
 				info.poly.select(c);
@@ -693,11 +743,29 @@ namespace zn
 				size_t size = sieve_stuff.values.size();
 				for (auto &run : info.runs)
 				{
-					size_t index = static_cast<size_t>(m_ + run.x) % run.p;
-					for (size_t i = index; i < size; i += static_cast<size_t>(run.p))
+					if (run.p < 12)
+						continue;
+					int index0 = static_cast<int>(m_ + run.x[0]) % run.p;
+					int index1 = static_cast<int>(m_ + run.x[1]) % run.p;
+					int index = std::min(index0, index1);
+					int delta = std::max(index0, index1) - index;
+					int size1 = static_cast<int>(size) - delta;
+					int i = index;
+					for (; i < size1; i += static_cast<int>(run.p))
+					{
+						sieve_stuff.values[i]         -= run.lg;
+						sieve_stuff.values[i + delta] -= run.lg;
+					}
+					if (i < static_cast<int>(size))
 						sieve_stuff.values[i] -= run.lg;
 				}
+#ifdef _DEBUG
+				size_t prev = result.size() ;
+#endif
 				collect_smooth(info, sieve_stuff, result);
+#ifdef _DEBUG
+				poly_stat_[c] += result.size() - prev;
+#endif
 			}
 			return result;
 		}
@@ -705,7 +773,7 @@ namespace zn
 							const sieve_stuff_t &sieve,
 							smooth_vector_t &result)
 		{
-			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 5 * real_op_t<real>::unit(); // small prime variation
+			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 1 * real_op_t<real>::unit(); // small prime variation
 			if (info.have_double)
 				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
 
@@ -752,6 +820,9 @@ namespace zn
 		{
 			sieve_stuff_t sieve_stuff;
 			sieve_stuff.have_double = have_double;
+			large_int largest_prime = base_.rbegin()->prime(0);
+			sieve_stuff.thrs2 = largest_prime * largest_prime;
+			sieve_stuff.thrs3 = sieve_stuff.thrs2 * largest_prime;
 			try
 			{
 				for (auto seed = polynomials_.pop(); !seed.is_null(); seed = polynomials_.pop())
@@ -763,7 +834,7 @@ namespace zn
 						sieve_stuff.values = sieve_stuff.init;
 					}
 					auto chunk = sieve(poly, sieve_stuff);
-					F.push(chunk);
+					smooths_found_.push(chunk);
 				}
 			}
 			catch (std::exception &exc)
@@ -814,6 +885,10 @@ namespace zn
 		small_int					k_;
 #endif
 		std::vector<base_ref_t>		base_;
+#ifdef _DEBUG
+		std::vector<size_t> poly_stat_;
+		int					poly_count_ = 0;
+#endif
 #ifdef HAVE_THREADING
 		shared_list_t<polynomial_seed_t> polynomials_;
 		shared_list_t<smooth_vector_t>   smooths_found_;

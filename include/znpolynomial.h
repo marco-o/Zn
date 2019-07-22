@@ -221,10 +221,16 @@ namespace zn
 		}
 	};
 
+	template <class stream_t, class large_int, class small_int>
+	stream_t &operator<<(stream_t &stream, const polynomial_siqs_t<large_int, small_int> &poly)
+	{
+		stream << poly.a << "x^2 + " << poly.b << "x + " << poly.c;
+		return stream;
+	}
+
 	template <class large_int, class small_int>
 	class polynomial_generator_t
 	{
-		enum { first_base_e = 2 };
 	public:
 		struct base_t : prime_info_t<small_int>
 		{
@@ -261,8 +267,14 @@ namespace zn
 		void order_init(int order)
 		{
 			index_.index.clear();
+			float min_log = base_.rbegin()->logp / (4 * order / 3);
+			auto it = std::lower_bound(base_.begin(), base_.end(), min_log, 
+				[](const base_t &base, float p) {
+				return base.logp < p;
+			});
+			first_base_ = static_cast<int>(it - base_.begin());
 			for (int i = 1; i < order; i++)
-				index_.index.push_back(i - 1);
+				index_.index.push_back(i - 1 + first_base_);
 			index_.index.push_back(static_cast<int>(base_.size() - 1));
 			coarse_init();
 		}
@@ -314,7 +326,7 @@ namespace zn
 			if (index_.index[order - 2] >= index_.index[order - 1])
 			{
 				for (size_t i = 0; i < order; i++)
-					index_.index[i] = static_cast<int>(i + first_base_e);
+					index_.index[i] = static_cast<int>(i + first_base_);
 				index_.index.push_back(static_cast<int>(base_.size() - 1));
 			}
 			coarse_init();
@@ -363,6 +375,7 @@ namespace zn
 		float				target_;
 		float				average_target_error_ = 0.1f ;
 		int					average_count_ = 0;
+		int					first_base_ = 2; 
 		std::vector<base_t> base_;
 	};
 
@@ -378,12 +391,12 @@ namespace zn
 		{
 			run_int_t p; // may be a power of prime
 			run_int_t a; // poly.a % prime
-			run_int_t r;
 			run_int_t a1; // inverse of a
 			real_t    lg; // logarithm to subtract
 			// the following values change for each sub-polynomial
 			run_int_t b;  // poly.b % prime
-			run_int_t x;
+			run_int_t r[2];
+			run_int_t x[2];
 			int bix;
 		};
 		sieve_range_t(const poly_t &poly, small_int m) : poly_(poly), m_(m) {}
@@ -418,26 +431,32 @@ namespace zn
 			for (size_t k = 0 ; k < bases_size ; k++)
 			{
 				auto &base = bases[k];
-				size_t powers = base.powers();
+				size_t powers = 1; // std::min<size_t>(2, base.powers());
 				run.lg = base.logp();
-				run.bix = k;
+				run.bix = static_cast<int>(k);
 				for (size_t i = 0; i < powers; i++)
 				{
 					run.p = static_cast<run_int_t>(base.prime(i));
 					run.a = safe_cast<run_int_t>(poly.a % run.p);
-					if (run.a == 0)
-						break; // we are hitting a divisor of a
-					run.a1 = std::get<1>(extended_euclidean_algorithm<run_int_t>(run.a, run.p));
 					run.b = safe_cast<run_int_t>(poly.b % run.p);
-					run.r = static_cast<run_int_t>(base.residue(i));
-					run.x = ((run.p - run.b + run.r) * run.a1) % run.p;
-					runs.push_back(run);
-					if (run.p > 2)
+					if (run.b < 0)
+						run.b += run.p;
+					if (run.a == 0)
 					{
-						run.r = run.p - run.r;
-						run.x = ((run.p - run.b + run.r) * run.a1) % run.p;
+						run.a1 = std::get<1>(extended_euclidean_algorithm<run_int_t>(2 * run.b, run.p));
+						run.r[0] = run.r[1] = safe_cast<run_int_t>(poly.c % run.p);
+						run.x[0] = run.x[1] = -(run.a1 * run.r[0]) % run.p;
+//						if (run.lg > 1)
+//							run.lg /= 2;
 						runs.push_back(run);
+						break; // we are hitting a divisor of a
 					}
+					run.a1 = std::get<1>(extended_euclidean_algorithm<run_int_t>(run.a, run.p));
+					run.r[0] = static_cast<run_int_t>(base.residue(i));
+					run.x[0] = ((run.p - run.b + run.r[0]) * run.a1) % run.p;
+					run.r[1] = run.p - run.r[0];
+					run.x[1] = ((run.p - run.b + run.r[1]) * run.a1) % run.p;
+					runs.push_back(run);
 					run.bix = -1;
 				}
 			}
@@ -446,10 +465,21 @@ namespace zn
 							   std::vector<sieve_run_t> &runs)
 		{
 			for (auto &run : runs)
-			{
-				run.b = safe_cast<run_int_t>(poly.b % run.p);
-				run.x = ((run.p - run.b + run.r) * run.a1) % run.p;
-			}
+				if (run.a != 0)
+				{
+					run.b = safe_cast<run_int_t>(poly.b % run.p);
+					run.x[0] = ((run.p - run.b + run.r[0]) * run.a1) % run.p;
+					run.x[1] = ((run.p - run.b + run.r[1]) * run.a1) % run.p;
+				}
+				else
+				{
+					run.b = safe_cast<run_int_t>(poly.b % run.p);
+					if (run.b < 0)
+						run.b += run.p;
+					run.a1 = std::get<1>(extended_euclidean_algorithm<run_int_t>(2 * run.b, run.p));
+					run.r[0] = run.r[1] = safe_cast<run_int_t>(poly.c % run.p);
+					run.x[0] = run.x[1] = -(run.a1 * run.r[0]) % run.p;
+				}
 		}
 	private:
 		void fill_range(std::vector<real_t> &values,
