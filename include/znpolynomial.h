@@ -257,6 +257,7 @@ namespace zn
 				base_.push_back(base_t(base[i]));
 			order_init(min_order);
 		}
+		size_t order(void) const { return index_.index.size(); }
 		polynomial_seed_t operator()(void)
 		{
 			increment();
