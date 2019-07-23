@@ -387,9 +387,10 @@ namespace zn
 		const poly_t   &poly_;
 		small_int		m_;
 	public:
-		typedef long run_int_t;
+		typedef small_int run_int_t;
 		struct sieve_run_t
 		{
+			typedef real_t real;
 			run_int_t p; // may be a power of prime
 			run_int_t a; // poly.a % prime
 			small_int a1; // inverse of a
@@ -432,7 +433,8 @@ namespace zn
 			for (size_t k = 0 ; k < bases_size ; k++)
 			{
 				auto &base = bases[k];
-				size_t powers = 1; // std::min<size_t>(2, base.powers());
+				// avoiding power of primes looks faster
+				size_t powers = 1;// std::min<size_t>(2, base.powers());
 				run.lg = base.logp();
 				run.bix = static_cast<int>(k);
 				for (size_t i = 0; i < powers; i++)
@@ -525,7 +527,41 @@ namespace zn
 				values[offset + i] = poly_.eval_log<real_t>(begin + i);
 		}
 	};
-
-
+#if 0
+	template <class sieve_run_t, int N>
+	struct sieve_pass_t : public sieve_pass_t<sieve_run_t, N - 1>
+	{
+	public:
+		typedef typename sieve_run_t::real real;
+		static int run_init(sieve_run_t *runs, size_t m1, size_t m2, std::vector<real> &values)
+		{
+			int index0 = static_cast<int>((m1 + run->x[0]) % run->p);
+			int index1 = static_cast<int>((m1 + run->x[1]) % run->p);
+			int index = std::min(index0, index1);
+			values_ = &values[0] + index;
+			delta = std::max(index0, index1) - index;
+			int loops0 = (m2 - index0) / run.p;
+			int loops1 = (m2 - index1) / run.p;
+			int loops  = std::min(loops0, loops1);
+			int loopsx = sieve_pass<sieve_run_t, N - 1>::run_init(runs + 1, m1, m2, values);
+			return std::min(loops, loopsx);
+		}
+		void apply(const run_t *run, int loops)
+		{
+			for (int i = 0; i < loops; i++)
+				one_step(run);
+		}
+		void one_step(const run_t *run)
+		{
+			values_[0] -= run->lg;
+			values_[delta_] -= run->lg;
+			values_ += run->p;
+			sieve_pass_t<sieve_run_t, N - 1>::run(run + 1);
+		}
+	private:
+		int     delta_;
+		real_t *values_;
+	};
+#endif
 }
 #endif

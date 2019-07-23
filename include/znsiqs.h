@@ -524,7 +524,6 @@ namespace zn
 		};
 		struct sieve_stuff_t
 		{
-			enum { cached_size_e = 1 << 15 };
 			std::vector<real> values;
 			std::vector<real> init;
 
@@ -541,38 +540,10 @@ namespace zn
 				thrs2 = largest_prime * largest_prime;
 				thrs3 = thrs2 * largest_prime;
 			}
-			void begin(void) { start = 0; one_step(); }
-			bool one_step(void)
+			void compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
 			{
-				if (start < steps)
-				{
-#ifdef HAVE_CACHED_SIEVE
-					std::copy_n(init.begin() + start, cached_size_e, values.begin());
-					start += cached_size_e;
-#else
-					values = init;
-					start += steps;
-#endif
-					return true;
-				}
-				else
-					return false;
-			}
-			small_int compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
-			{
-				m = cached_size_e * static_cast<size_t>(m / cached_size_e);
 				if (init.empty())
-				{
-#ifdef HAVE_CACHED_SIEVE
-					steps = 2 * static_cast<size_t>(m);
-					init = sieve_t(poly, static_cast<size_t>(steps)).fill(offset);
-					values.resize(cached_size_e);
-#else
 					init = sieve_t(poly, static_cast<size_t>(m)).fill(offset);
-					values = init ;
-#endif
-				}
-				return m;
 			}
 		};
 		typedef std::vector<smooth_t> smooth_vector_t;
@@ -643,7 +614,7 @@ namespace zn
 			polynomial_siqs_t<large_int, small_int> poly(generator().index, base_info, n_);
 
 			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), have_double);
-			m_ = sieve_stuff.compute(poly, m_);
+			sieve_stuff.compute(poly, m_);
 #endif
 
 			int count = 0;
@@ -772,50 +743,87 @@ namespace zn
 				poly_stat_.resize(count);
 			poly_count_++;
 #endif
+			std::vector<typename sieve_t::sieve_run_t>::iterator begin, end;
 			for (size_t c = 0; c < count; c++)
 			{
 				info.poly.select(c);
 				if (c == 0)
+				{
 					sieve_t::build_run(info.poly, base_, info.runs);
+					end = info.runs.end();
+					begin = info.runs.begin();
+					for (; begin != end; ++begin)
+						if (begin->p > 12)
+							break;
+				}
 				else
 					sieve_t::update_run(info.poly, info.runs);
 
-				sieve_stuff.begin(); 
-				do 
+				sieve_stuff.values = sieve_stuff.init;
+				size_t size = sieve_stuff.values.size();
+				auto it = begin;
+#if 0
+				const int loop_unroll = 4;
+				for (; it != end; ++it)
 				{
-					size_t size = sieve_stuff.values.size();
-					for (auto &run : info.runs)
+					auto &run = *it;
+					int index0 = static_cast<int>((m_ + run.x[0]) % run.p);
+					int index1 = static_cast<int>((m_ + run.x[1]) % run.p);
+					int indexmin = std::min(index0, index1);
+					int indexmax = std::max(index0, index1);
+					int loops = static_cast<int>((size - indexmax) / run.p) - loop_unroll + 1;
+					if (loops < loop_unroll * 2)
+						break;
+					int delta0 = indexmax - indexmin;
+					int delta1 = static_cast<int>(run.p) - delta0;
+					real *v = &sieve_stuff.values[0] + indexmin;
+					for (int i = 0; i < loops; i += 4)
 					{
-						if (run.p < 12)
-							continue;
-#ifdef HAVE_CACHED_SIEVE
-						small_int m1 = m_ - sieve_stuff.start + sieve_stuff_t::cached_size_e + run.p * m_;
-						int index0 = static_cast<int>((m1 + run.x[0]) % run.p);
-						int index1 = static_cast<int>((m1 + run.x[1]) % run.p);
-#else
-						int index0 = static_cast<int>(m_ + run.x[0]) % run.p;
-						int index1 = static_cast<int>(m_ + run.x[1]) % run.p;
-#endif
-						int index = std::min(index0, index1);
-						int delta = std::max(index0, index1) - index;
-						int size1 = static_cast<int>(size) - delta;
-						int i = index;
-						for (; i < size1; i += static_cast<int>(run.p))
-						{
-							sieve_stuff.values[i] -= run.lg;
-							sieve_stuff.values[i + delta] -= run.lg;
-						}
-						if (i < static_cast<int>(size))
-							sieve_stuff.values[i] -= run.lg;
+						v[0] -= run.lg; v += delta0;
+						v[0] -= run.lg;	v += delta1;
+						v[0] -= run.lg; v += delta0;
+						v[0] -= run.lg;	v += delta1;
+						v[0] -= run.lg; v += delta0;
+						v[0] -= run.lg;	v += delta1;
+						v[0] -= run.lg; v += delta0;
+						v[0] -= run.lg;	v += delta1;
 					}
-#ifdef _DEBUG
-					size_t prev = result.size();
+					int i = static_cast<int>(v - &sieve_stuff.values[0]);
+					int size1 = static_cast<int>(size) - delta0;
+					for (; i < size1; i += static_cast<int>(run.p))
+					{
+						sieve_stuff.values[i] -= run.lg;
+						sieve_stuff.values[i + delta0] -= run.lg;
+					}
+					if (i < static_cast<int>(size))
+						sieve_stuff.values[i] -= run.lg;
+				}
 #endif
-					collect_smooth(info, sieve_stuff, result);
+				for (; it != end; ++it)
+				{
+					auto &run = *it;
+					small_int m1 = m_ + run.p;
+					int index0 = static_cast<int>((m1 + run.x[0]) % run.p);
+					int index1 = static_cast<int>((m1 + run.x[1]) % run.p);
+					int index = std::min(index0, index1);
+					int delta = std::max(index0, index1) - index;
+					int size1 = static_cast<int>(size) - delta;
+					int i = index;
+					for (; i < size1; i += static_cast<int>(run.p))
+					{
+						sieve_stuff.values[i] -= run.lg;
+						sieve_stuff.values[i + delta] -= run.lg;
+					}
+					if (i < static_cast<int>(size))
+						sieve_stuff.values[i] -= run.lg;
+				}
 #ifdef _DEBUG
-					poly_stat_[c] += result.size() - prev;
+				size_t prev = result.size();
 #endif
-				} while (sieve_stuff.one_step());
+				collect_smooth(info, sieve_stuff, result);
+#ifdef _DEBUG
+				poly_stat_[c] += result.size() - prev;
+#endif
 			}
 			return result;
 		}
@@ -831,11 +839,7 @@ namespace zn
 			for (size_t i = 0; i < size; i++)
 				if (sieve.values[i] < sieve_thrs)
 				{
-#ifdef HAVE_CACHED_SIEVE
-					smooth_t s(info, i - m_ + sieve.start - sieve_stuff_t::cached_size_e);
-#else
 					smooth_t s(info, i - m_);
-#endif
 					analysis_.smooth_attempts++;
 					
 					if (s.type() <= inherit_t::smooth_double_e)

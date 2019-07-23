@@ -67,8 +67,7 @@ private:
 #define HAVE_CANDIDATE_ANALYSYS
 //#define HAVE_DOUBLE_LARGE_PRIME
 #define HAVE_TIMING
-//#define HAVE_CACHED_SIEVE
-//#define HAVE_MULTIPLIER
+#define HAVE_MULTIPLIER
 #ifdef HAVE_TIMING
 #include <chrono>
 #endif
