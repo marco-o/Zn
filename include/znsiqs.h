@@ -626,7 +626,7 @@ namespace zn
 			polynomial_generator_t<large_int, small_int> generator(n_, m_, base_info);
 			if (order > 0)
 				generator.order_init(order);
-			LOG_INFO << "Fctors of 'a' = " << generator.order() << log_base_t::newline_t();
+			LOG_INFO << "Factors of 'a' = " << generator.order() << log_base_t::newline_t();
 #ifdef HAVE_TIMING
 			time_estimator_t time_estimator(base_.size());
 #endif

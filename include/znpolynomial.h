@@ -387,12 +387,12 @@ namespace zn
 		const poly_t   &poly_;
 		small_int		m_;
 	public:
-		typedef small_int run_int_t;
+		typedef long run_int_t;
 		struct sieve_run_t
 		{
 			run_int_t p; // may be a power of prime
 			run_int_t a; // poly.a % prime
-			run_int_t a1; // inverse of a
+			small_int a1; // inverse of a
 			real_t    lg; // logarithm to subtract
 			// the following values change for each sub-polynomial
 			run_int_t b;  // poly.b % prime
