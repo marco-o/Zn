@@ -233,6 +233,7 @@ namespace zn
 
 			smooth_t(const smooth_info_t &info, small_int x) : sqr(info.poly.a0), sign_bit(false)
 			{
+				large_int q, r;
 				axb = info.poly.a * x + info.poly.b;
 				auto f = info.poly.eval(x);
 				if (f < 0)
@@ -248,7 +249,7 @@ namespace zn
 					bool plus = ((x - run.x[0]) % run.p == 0);
 					bool minus = ((x - run.x[1]) % run.p == 0);
 					//if (run.a != 0)
-					if ((run.bix < 0) || !(plus || minus))
+					if (!plus && !minus)
 					{
 #ifdef _DEBUG
 						large_int f1 = f;
@@ -277,11 +278,24 @@ namespace zn
 					}
 #endif
 					int rexp = 0;
-					large_int p = run.p;
 					int power = 0;
-					while (divide_qr1(f, p))
+#if 1
+					large_int p = run.p;
+					while (f > 1)
+					{
+						divide_qr(f, p, q, r);
+						if (r != 0)
+							break;
 						if (++power % 2 == 0)
 							sqr = (sqr * p) % info.n;
+						f = q;
+					}
+#else
+					large_int p = run.p;
+					while (divide_qr(f, p))
+						if (++power % 2 == 0)
+							sqr = (sqr * p) % info.n;
+#endif
 #ifdef _DEBUG
 					if (power == 0)
 						if (run.a)
@@ -703,7 +717,7 @@ namespace zn
 				smooth_t s;
 				for (auto index : item)
 					s.compose(smooths[index], n_, base_);
-#if DBG_SIEVE >= DBG_SIEVE_WARNING
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 				if (!s.square())
 					std::cout << "Non null factors!\n";
 				if (!s.invariant(n_, base_))
@@ -831,7 +845,7 @@ namespace zn
 							const sieve_stuff_t &sieve,
 							smooth_vector_t &result)
 		{
-			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 1 * real_op_t<real>::unit(); // small prime variation
+			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 4 * real_op_t<real>::unit(); // small prime variation
 			if (info.have_double)
 				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
 
@@ -844,7 +858,7 @@ namespace zn
 					
 					if (s.type() <= inherit_t::smooth_double_e)
 					{
-#if DBG_SIEVE >= DBG_SIEVE_INFO
+#if DBG_SIEVE >= DBG_SIEVE_DEBUG
 						if (!s.invariant(n_, base_))
 							std::cout << "Hm\n";
 #endif // DBG_SIEVE	

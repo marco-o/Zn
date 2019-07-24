@@ -53,8 +53,8 @@ private:
 #define DBG_SIEVE_ERROR		1
 #define DBG_SIEVE_WARNINIG  2
 #define DGB_SIEVE_INFO		3
-#define DBG_SIEVE_TRACE		4
-#define DBG_SIEVE_DEBUG		5
+#define DBG_SIEVE_DEBUG		4
+#define DBG_SIEVE_TRACE		5
 #ifdef _DEBUG
 #define DBG_SIEVE			DBG_SIEVE_TRACE
 #else

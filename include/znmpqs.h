@@ -363,7 +363,7 @@ namespace zn
 					smooth_t s(poly, i - m_, candidate_thrs, n_, base_);
 					if (s.type() != inherit_t::smooth_idle_e)
 					{
-#if DBG_SIEVE >= DBG_SIEVE_INFO
+#if DBG_SIEVE >= DBG_SIEVE_WARNING
 						if (!s.invariant(n_, base_))
 							std::cout << "Hm\n";
 #endif // DBG_SIEVE	

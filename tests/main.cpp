@@ -323,6 +323,8 @@ int main(int argc, char *argv[])
 			test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
 		else if (strcmp(argv[i], "--mpqsg") == 0)
 			test_multiple_polynomial_quadratic_sieve<mpz_int, long long, short>(mpz_int(n), mpz_int(m1), base_size);
+		else if (strcmp(argv[i], "--siqsg") == 0)
+			test_self_initializing_quadratic_sieve<mpz_int, long long, unsigned char>(mpz_int(n), mpz_int(m1), base_size, k, have_double);
 #endif
 #endif
 		else if (strcmp(argv[i], "--ec") == 0)

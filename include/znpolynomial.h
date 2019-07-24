@@ -387,7 +387,7 @@ namespace zn
 		const poly_t   &poly_;
 		small_int		m_;
 	public:
-		typedef small_int run_int_t;
+		typedef int run_int_t;
 		struct sieve_run_t
 		{
 			typedef real_t real;
