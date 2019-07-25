@@ -20,25 +20,33 @@
 #include "znelliptic_curve_fact.h"
 #include "zneratosthenes_sieve.h"
 #include "znquadratic_residue.h"
-#include "znquadratic_sieve0.h"
 #include "znquadratic_sieve.h"
 #include "znmpqs.h"
 #include "znsiqs.h"
 
+namespace zn
+{
+
+}
 #ifdef HAVE_BOOST
 using namespace boost::multiprecision;
 #endif
 
-using namespace zn ;
 
-
-template <class large_int, class small_int = int>
-void test_quadratic_sieve0(const large_int &n, small_int base_size)
+template <class large_int>
+void test_td(const large_int &n)
 {
-	auto p1 = quadratic_sieve0(n, base_size);
-	auto p2 = n / p1;
-	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+	zn::trial_division_t<cpp_int> td(n);
+	if (td.divide(2))
+		std::cout << "ok\n";
+	if (td.divide(7))
+		std::cout << "ok\n";
+	if (!td.divide(47))
+		std::cout << "ok\n";
 }
+
+
+using namespace zn ;
 
 template <class large_int, class small_int = int>
 void test_quadratic_sieve(const large_int &n, small_int base_size)
@@ -300,22 +308,20 @@ int main(int argc, char *argv[])
 			n = argv[i] + 4;
 		else if (strncmp(argv[i], "--k=", 4) == 0)
 			k = atoi(argv[i] + 4);
-		else if (strcmp(argv[i], "--qs0") == 0)
-			test_quadratic_sieve0<long long, int>(atoll(n), static_cast<int>(base_size));
 		else if (strcmp(argv[i], "--qs") == 0)
 			test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
-		else if (strcmp(argv[i], "--qsc0") == 0)
-			test_quadratic_sieve0<cpp_int, long long>(cpp_int(n), base_size);
+		else if (strcmp(argv[i], "--td") == 0)
+			test_td<cpp_int>(cpp_int(n));
 		else if (strcmp(argv[i], "--qsc") == 0)
 			test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
 		else if (strcmp(argv[i], "--mpqs") == 0)
 			test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
 		else if (strcmp(argv[i], "--mpqsl") == 0)
-			test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+			test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+	//	else if (strcmp(argv[i], "--siqsl") == 0)
+	//		test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 		else if (strcmp(argv[i], "--siqs") == 0)
 			test_self_initializing_quadratic_sieve<cpp_int, long long, unsigned char>(cpp_int(n), cpp_int(m1), base_size, k, have_double);
-		else if (strcmp(argv[i], "--siqsl") == 0)
-			test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
 		else if (strcmp(argv[i], "--polytest") == 0)
 			test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);
 #ifdef HAVE_GMP

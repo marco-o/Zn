@@ -24,6 +24,60 @@
 namespace zn
 {
 	bool rb_test(const boost::multiprecision::cpp_int &);
+
+	template <class large_int>
+	class trial_division_t
+	{
+	public:
+		typedef unsigned int value_type;
+		typedef long long temp_type;
+		trial_division_t(const large_int &n)
+		{
+			boost::multiprecision::export_bits(n, std::back_inserter(value_), 32, false);
+			temp_ = value_;
+			order_ = static_cast<int>(value_.size()) - 1;
+		}
+		bool complete(void) const
+		{
+			return value_.size() == 1 && value_[0] == 1;
+		}
+		temp_type reminder(void) const
+		{
+			switch (value_.size())
+			{
+			case 1:
+				return value_[0] ;
+			case 2:
+				return ((static_cast<temp_type>(value_[1]) << 32) + value_[0]) ;
+			default:
+				break;
+			}
+			return std::numeric_limits<temp_type>::max();
+		}
+		bool divide(int n)
+		{
+			temp_type r = 0;
+			for (int i = order_; i >= 0; i--)
+			{
+				r = (r << 32) + value_[i];
+				temp_[i] = static_cast<value_type>(r / n);
+				r = r % n;
+			}
+			if (r != 0)
+				return false;
+			if (temp_[order_] == 0)
+			{
+				temp_.pop_back();
+				order_--;
+			}
+			value_ = temp_;
+			return true;
+		}
+	private:
+		std::vector<value_type> value_;
+		std::vector<value_type> temp_;
+		int order_;
+	};
 #ifdef HAVE_CANDIDATE_ANALYSYS
 	struct analysis_t
 	{
@@ -215,8 +269,8 @@ namespace zn
 		struct smooth_info_t
 		{
 			poly_t		poly;
-			large_int	thrs;
-			large_int	thrs3;
+			small_int	thrs2;
+			small_int	thrs3;
 			large_int	n;
 			bool		have_double;
 			std::vector<typename sieve_t::sieve_run_t> runs;
@@ -233,7 +287,6 @@ namespace zn
 
 			smooth_t(const smooth_info_t &info, small_int x) : sqr(info.poly.a0), sign_bit(false)
 			{
-				large_int q, r;
 				axb = info.poly.a * x + info.poly.b;
 				auto f = info.poly.eval(x);
 				if (f < 0)
@@ -241,6 +294,7 @@ namespace zn
 					f = -f;
 					sign_bit = true;
 				}
+				trial_division_t<large_int> f1(f);
 				size_t runs_size = info.runs.size();
 				for (size_t j = 0; j < runs_size; j++)
 				{
@@ -280,16 +334,9 @@ namespace zn
 					int rexp = 0;
 					int power = 0;
 #if 1
-					large_int p = run.p;
-					while (f > 1)
-					{
-						divide_qr(f, p, q, r);
-						if (r != 0)
-							break;
+					while (f1.divide(run.p))
 						if (++power % 2 == 0)
-							sqr = (sqr * p) % info.n;
-						f = q;
-					}
+							sqr = (sqr * run.p) % info.n;
 #else
 					large_int p = run.p;
 					while (divide_qr(f, p))
@@ -326,17 +373,18 @@ namespace zn
 						factors_.push_back(run.bix);
 				}
 				s = inherit_t::smooth_idle_e;
-				if (f == 1)
+				small_int reminder = f1.reminder();
+				if (reminder == 1)
 					s = inherit_t::smooth_valid_e;
-				else if (f < info.thrs)
+				else if (reminder < info.thrs2)
 				{
-					large_f[0] = safe_cast<small_int>(f);
+					large_f[0] = reminder;
 					large_f[1] = 1;
 					s = inherit_t::smooth_candidate_e;
 				}
+#ifdef HAVE_DOUBLE_LARGE_PRIME
 				else if (info.have_double)
 				{
-#ifdef HAVE_DOUBLE_LARGE_PRIME
 					if (f > info.thrs3)
 						s = inherit_t::smooth_idle_e;
 					else if (!custom_prime_test(f))
@@ -363,8 +411,8 @@ namespace zn
 					}
 					else
 						s = inherit_t::smooth_huge_prime_e;
-#endif
 				}
+#endif
 			}
 			//
 			//	Accessors
@@ -545,14 +593,14 @@ namespace zn
 			size_t			  steps;
 
 			real			  offset;
-			large_int         thrs2;
-			large_int		  thrs3;
+			small_int         thrs2;
+			small_int		  thrs3;
 			bool			  have_double;
-			sieve_stuff_t(large_int largest_prime, bool have_double)
+			sieve_stuff_t(small_int largest_prime, bool have_dbl)
 			{
-				have_double = have_double;
-				thrs2 = largest_prime * largest_prime;
-				thrs3 = thrs2 * largest_prime;
+				have_double = have_dbl;
+				thrs2 = largest_prime * largest_prime / 32;
+				thrs3 = thrs2 * largest_prime / 4;
 			}
 			void compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
 			{
@@ -564,6 +612,9 @@ namespace zn
 		self_initializing_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size) : n_(n), m_(m)
 		{
 			// double the range; half of them won't be a quadratic residue
+#ifdef HAVE_TIMING
+			start_ = std::chrono::steady_clock::now();
+#endif
 			small_int range;
 			if (base_size != 0)
 				range = inherit_t::primes_range(base_size * 2);
@@ -594,8 +645,6 @@ namespace zn
 			small_int largest_sieving_prime = base_.rbegin()->prime(0);
 			LOG_INFO << "Actual base size: " << base_.size() 
 				     << ", largest = " << largest_sieving_prime << " ("<< valid_for_a << ")" << log_base_t::newline_t() ;
-			smooth_thrs_ = largest_sieving_prime;
-			smooth_thrs_ *= smooth_thrs_;
 
 			if (m_ < std::sqrt(largest_sieving_prime))
 				m_ = largest_sieving_prime * 2;
@@ -614,6 +663,7 @@ namespace zn
 			LOG_INFO << "Factors of 'a' = " << generator.order() << log_base_t::newline_t();
 #ifdef HAVE_TIMING
 			time_estimator_t time_estimator(base_.size());
+			log_time("Startup");
 #endif
 
 #ifdef HAVE_THREADING
@@ -674,7 +724,7 @@ namespace zn
 #endif
 			LOG_INFO << log_base_t::newline_t()
 #ifdef HAVE_CANDIDATE_ANALYSYS
-					 << "Attempted " << analysis_.smooth_attempts << "\n"
+			         << "Attempted " << analysis_.smooth_attempts << "\n"
 #ifdef HAVE_DOUBLE_LARGE_PRIME
 					  << "Detail: "  << analysis_.smooth_huge_prime
 					  << " (" << analysis_.smooth_huge_prime * 100 / analysis_.smooth_attempts << "%) likely prime "
@@ -686,6 +736,7 @@ namespace zn
 #endif
 #endif // HAVE_DOUBLE_LARGE_PRIME
 				     << "\n";
+			log_time("Sieving");
 			if (smooths.size() < actual_bsize)
 			{
 				LOG_ERROR << "Found only " << smooths.size() << log_base_t::newline_t();
@@ -741,7 +792,7 @@ namespace zn
 			if (failed > 0)
 				std::cout << "Failed " << failed << " attempts\n";
 #endif // DBG_SIEVE	
-
+			log_time("Final");
 			return r;
 		}
 		smooth_vector_t sieve(const polynomial_siqs_t<large_int, small_int> &poly,
@@ -776,7 +827,7 @@ namespace zn
 				sieve_stuff.values = sieve_stuff.init;
 				size_t size = sieve_stuff.values.size();
 				auto it = begin;
-#if 0
+#if 1
 				const int loop_unroll = 4;
 				for (; it != end; ++it)
 				{
@@ -845,6 +896,8 @@ namespace zn
 							const sieve_stuff_t &sieve,
 							smooth_vector_t &result)
 		{
+			real lg = base_.rbegin()->logp_;
+			real un = real_op_t<real>::unit();
 			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 4 * real_op_t<real>::unit(); // small prime variation
 			if (info.have_double)
 				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
@@ -942,7 +995,15 @@ namespace zn
 				base_[f].smooths.push_back(si);
 			smooths.push_back(smooth);
 		}
-		large_int					smooth_thrs_; // square of last element of base
+#ifdef HAVE_TIMING
+		void log_time(const char *msg)
+		{
+			auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_).count();
+			LOG_INFO << msg << " time " << elapsed / 1000.0<< log_base_t::newline_t();
+		}
+#else
+		void log_time(const char *) {}
+#endif
 		large_int					n_; // number to factor
 		small_int					m_; // size of sieving interval
 #ifdef HAVE_MULTIPLIER
@@ -960,6 +1021,9 @@ namespace zn
 #endif
 #ifdef HAVE_CANDIDATE_ANALYSYS
 		analysis_t analysis_;
+#endif
+#ifdef HAVE_TIMING
+		std::chrono::steady_clock::time_point start_;
 #endif
 	};
 
