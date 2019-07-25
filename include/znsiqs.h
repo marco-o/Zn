@@ -250,11 +250,13 @@ namespace zn
 		large_int				n_;
 	};
 
-	struct qs_config_t
+	struct sieving_options_t
 	{
-		int multiplier = 0; 
-		int order = 2; // numer of primes in 'a'
-		int base_size = 0; // number of primes (approximate) in base
+		int order = 0; // number of factors osf 'a'
+		int base_size = 0; // number of primes in the factoring base
+		int multiplier = 1;
+		bool have_double = false; // use partial-partial relations
+		int m = 0 ; // sieving interval (half of it)
 	};
 
 	template <class large_int, class small_int, class real>
@@ -299,7 +301,6 @@ namespace zn
 				for (size_t j = 0; j < runs_size; j++)
 				{
 					const auto &run = info.runs[j];
-#if 1
 					bool plus = ((x - run.x[0]) % run.p == 0);
 					bool minus = ((x - run.x[1]) % run.p == 0);
 					//if (run.a != 0)
@@ -315,7 +316,6 @@ namespace zn
 #endif
 						continue;
 					}
-#endif
 #if 0
 					if (run.p == 17)
 					{
@@ -609,15 +609,15 @@ namespace zn
 			}
 		};
 		typedef std::vector<smooth_t> smooth_vector_t;
-		self_initializing_quadratic_sieve_t(const large_int &n, const large_int &m, small_int base_size) : n_(n), m_(m)
+		self_initializing_quadratic_sieve_t(const large_int &n, const sieving_options_t &opt) : n_(n), options_(opt)
 		{
 			// double the range; half of them won't be a quadratic residue
 #ifdef HAVE_TIMING
 			start_ = std::chrono::steady_clock::now();
 #endif
 			small_int range;
-			if (base_size != 0)
-				range = inherit_t::primes_range(base_size * 2);
+			if (options_.base_size != 0)
+				range = inherit_t::primes_range(options_.base_size * 2);
 			else
 			{
 				double n1 = safe_cast<double>(n);
@@ -626,12 +626,14 @@ namespace zn
 				range = static_cast<small_int>(std::exp(e2));
 			}
 			auto primes = eratosthenes_sieve<small_int>(static_cast<int>(range));
-#ifdef HAVE_MULTIPLIER
-			k_ = premultiplier(n, primes);
-			LOG_INFO << "Premultiplier = " << k_ << log_base_t::newline_t();
-			n_ *= k_;
-#endif
-			int valid_for_a = 0;
+			if (options_.multiplier == 0)
+				options_.multiplier = premultiplier(n, primes);
+			if (options_.multiplier != 1)
+			{
+				LOG_INFO << "Premultiplier = " << options_.multiplier << log_base_t::newline_t();
+				n_ *= options_.multiplier;
+			}
+		int valid_for_a = 0;
 			for (auto p : primes)
 			{
 				typename inherit_t::base_t base = inherit_t::base_t::build(p, n_);
@@ -646,10 +648,10 @@ namespace zn
 			LOG_INFO << "Actual base size: " << base_.size() 
 				     << ", largest = " << largest_sieving_prime << " ("<< valid_for_a << ")" << log_base_t::newline_t() ;
 
-			if (m_ < std::sqrt(largest_sieving_prime))
-				m_ = largest_sieving_prime * 2;
+			if (options_.m < std::sqrt(largest_sieving_prime))
+				options_.m = static_cast<int>(largest_sieving_prime * 2);
 		}
-		large_int process(int order, bool have_double)
+		large_int process(void)
 		{
 			relations_graph_t<smooth_t> candidates(n_);
 			smooth_vector_t smooths;
@@ -657,9 +659,9 @@ namespace zn
 			for (auto &item : base_)
 				if (item.powers() > 1)
 					base_info.push_back(prime_info_t<small_int>{item.prime(0), item.prime(1), item.residue(1)});
-			polynomial_generator_t<large_int, small_int> generator(n_, m_, base_info);
-			if (order > 0)
-				generator.order_init(order);
+			polynomial_generator_t<large_int, small_int> generator(n_, options_.m, base_info);
+			if (options_.order > 0)
+				generator.order_init(options_.order);
 			LOG_INFO << "Factors of 'a' = " << generator.order() << log_base_t::newline_t();
 #ifdef HAVE_TIMING
 			time_estimator_t time_estimator(base_.size());
@@ -670,15 +672,15 @@ namespace zn
 			int cores = system_info_t::cores();
 			for (int i = 0; i < cores; i++)
 			{
-				threads_.emplace_back(&self_initializing_quadratic_sieve_t::sieving_thread, this, std::ref(base_info), have_double);
+				threads_.emplace_back(&self_initializing_quadratic_sieve_t::sieving_thread, this, std::ref(base_info));
 				polynomials_.push(generator());
 				polynomials_.push(generator());
 			}
 #else
 			polynomial_siqs_t<large_int, small_int> poly(generator().index, base_info, n_);
 
-			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), have_double);
-			sieve_stuff.compute(poly, m_);
+			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), options_.have_double);
+			sieve_stuff.compute(poly, options_.m);
 #endif
 
 			int count = 0;
@@ -760,9 +762,11 @@ namespace zn
 		{
 			int failed = 0;
 			large_int r = 1;
-#ifdef HAVE_MULTIPLIER
-			large_int n1 = n_ / k_;
-#endif
+
+			large_int n1 = n_;
+			if (options_.multiplier != 1)
+				n1 /= options_.multiplier ;
+
 			for (auto &item : basemix)
 			{
 				smooth_t s;
@@ -832,8 +836,8 @@ namespace zn
 				for (; it != end; ++it)
 				{
 					auto &run = *it;
-					int index0 = static_cast<int>((m_ + run.x[0]) % run.p);
-					int index1 = static_cast<int>((m_ + run.x[1]) % run.p);
+					int index0 = static_cast<int>((options_.m + run.x[0]) % run.p);
+					int index1 = static_cast<int>((options_.m + run.x[1]) % run.p);
 					int indexmin = std::min(index0, index1);
 					int indexmax = std::max(index0, index1);
 					int loops = static_cast<int>((size - indexmax) / run.p) - loop_unroll + 1;
@@ -867,7 +871,7 @@ namespace zn
 				for (; it != end; ++it)
 				{
 					auto &run = *it;
-					small_int m1 = m_ + run.p;
+					small_int m1 = options_.m + run.p;
 					int index0 = static_cast<int>((m1 + run.x[0]) % run.p);
 					int index1 = static_cast<int>((m1 + run.x[1]) % run.p);
 					int index = std::min(index0, index1);
@@ -905,8 +909,8 @@ namespace zn
 			size_t size = sieve.values.size();
 			for (size_t i = 0; i < size; i++)
 				if (sieve.values[i] < sieve_thrs)
-				{
-					smooth_t s(info, i - m_);
+				{   // static cast required, otherwise operation is done on unsigend
+					smooth_t s(info, static_cast<int>(i) - options_.m); 
 					analysis_.smooth_attempts++;
 					
 					if (s.type() <= inherit_t::smooth_double_e)
@@ -941,15 +945,15 @@ namespace zn
 				}
 		}
 #ifdef HAVE_THREADING
-		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info, bool have_double)
+		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info)
 		{
-			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), have_double);
+			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), options_.have_double);
 			try
 			{
 				for (auto seed = polynomials_.pop(); !seed.is_null(); seed = polynomials_.pop())
 				{
 					polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
-					sieve_stuff.compute(poly, m_);
+					sieve_stuff.compute(poly, options_.m);
 					auto chunk = sieve(poly, sieve_stuff);
 					smooths_found_.push(chunk);
 				}
@@ -1005,10 +1009,6 @@ namespace zn
 		void log_time(const char *) {}
 #endif
 		large_int					n_; // number to factor
-		small_int					m_; // size of sieving interval
-#ifdef HAVE_MULTIPLIER
-		small_int					k_;
-#endif
 		std::vector<base_ref_t>		base_;
 #ifdef _DEBUG
 		std::vector<size_t> poly_stat_;
@@ -1025,17 +1025,19 @@ namespace zn
 #ifdef HAVE_TIMING
 		std::chrono::steady_clock::time_point start_;
 #endif
+		sieving_options_t options_;
 	};
 
 
+
 	template <class large_int, class small_int = int, class real = float>
-	large_int self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int order = 0, bool have_double = false)
+	large_int self_initializing_quadratic_sieve(const large_int &n, const sieving_options_t &opt)
 	{
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 		std::cout << "Factorization of " << n << std::endl;
 #endif
-		self_initializing_quadratic_sieve_t<large_int, small_int, real> qs(n, m, base_size);
-		return qs.process(order, have_double);
+		self_initializing_quadratic_sieve_t<large_int, small_int, real> qs(n, opt);
+		return qs.process();
 	}
 
 };

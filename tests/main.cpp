@@ -65,9 +65,9 @@ void test_multiple_polynomial_quadratic_sieve(const large_int &n, const large_in
 }
 
 template <class large_int, class small_int = int, class real = float>
-void test_self_initializing_quadratic_sieve(const large_int &n, const large_int &m, small_int base_size, int order = 0, bool have_double = false)
+void test_self_initializing_quadratic_sieve(const large_int &n, const sieving_options_t &opt)
 {
-	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, m, base_size, order, have_double);
+	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, opt);
 	auto p2 = n / p1;
 	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
 }
@@ -281,7 +281,7 @@ int main(int argc, char *argv[])
 	const char *b1 = "7";
 	const char *ps1 = "1";
 #endif
-
+	sieving_options_t options;
     try
     {
 		log_base_t::init(argc, argv);
@@ -299,76 +299,78 @@ int main(int argc, char *argv[])
 			}
 			else if (strncmp(argv[i], "--count=", 8) == 0)
 				count = argv[i] + 8;
+#ifdef HAVE_BOOST
+			else if (strncmp(argv[i], "--base-size=", 12) == 0)
+				base_size = options.base_size = atoi(argv[i] + 12);
+			else if (strncmp(argv[i], "--order=", 8) == 0)
+				options.order = atoi(argv[i] + 8);
+			else if (strncmp(argv[i], "--multiplier=", 13) == 0)
+				options.multiplier = atoi(argv[i] + 13);
+			else if (strncmp(argv[i], "--m=", 4) == 0)
+				m = options.m = atoi(m1 = argv[i] + 4);
 			else if (strcmp(argv[i], "--double") == 0)
-				have_double = true;
-#ifdef HAVE_BOOST
-		else if (strncmp(argv[i], "--base-size=", 12) == 0)
-			base_size = atoi(argv[i] + 12);
-		else if (strncmp(argv[i], "--n=", 4) == 0)
-			n = argv[i] + 4;
-		else if (strncmp(argv[i], "--k=", 4) == 0)
-			k = atoi(argv[i] + 4);
-		else if (strcmp(argv[i], "--qs") == 0)
-			test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
-		else if (strcmp(argv[i], "--td") == 0)
-			test_td<cpp_int>(cpp_int(n));
-		else if (strcmp(argv[i], "--qsc") == 0)
-			test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
-		else if (strcmp(argv[i], "--mpqs") == 0)
-			test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
-		else if (strcmp(argv[i], "--mpqsl") == 0)
-			test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
-	//	else if (strcmp(argv[i], "--siqsl") == 0)
-	//		test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
-		else if (strcmp(argv[i], "--siqs") == 0)
-			test_self_initializing_quadratic_sieve<cpp_int, long long, unsigned char>(cpp_int(n), cpp_int(m1), base_size, k, have_double);
-		else if (strcmp(argv[i], "--polytest") == 0)
-			test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);
+				options.have_double = true;
+			else if (strncmp(argv[i], "--n=", 4) == 0)
+				n = argv[i] + 4;
+			else if (strcmp(argv[i], "--qs") == 0)
+				test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
+			else if (strcmp(argv[i], "--td") == 0)
+				test_td<cpp_int>(cpp_int(n));
+			else if (strcmp(argv[i], "--qsc") == 0)
+				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
+			else if (strcmp(argv[i], "--mpqs") == 0)
+				test_multiple_polynomial_quadratic_sieve<cpp_int, long long, short>(cpp_int(n), cpp_int(m1), base_size, k);
+			else if (strcmp(argv[i], "--mpqsl") == 0)
+				test_multiple_polynomial_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+		//	else if (strcmp(argv[i], "--siqsl") == 0)
+		//		test_self_initializing_quadratic_sieve<long long, long long>(atoll(n), atoll(m1), base_size);
+			else if (strcmp(argv[i], "--siqs") == 0)
+				test_self_initializing_quadratic_sieve<cpp_int, long long, unsigned char>(cpp_int(n), options);
+			else if (strcmp(argv[i], "--polytest") == 0)
+				test_polynomial_generation<cpp_int, long long>(cpp_int(n), atoll(m1), base_size);
 #ifdef HAVE_GMP
-		else if (strcmp(argv[i], "--qsg") == 0)
-			test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
-		else if (strcmp(argv[i], "--mpqsg") == 0)
-			test_multiple_polynomial_quadratic_sieve<mpz_int, long long, short>(mpz_int(n), mpz_int(m1), base_size);
-		else if (strcmp(argv[i], "--siqsg") == 0)
-			test_self_initializing_quadratic_sieve<mpz_int, long long, unsigned char>(mpz_int(n), mpz_int(m1), base_size, k, have_double);
+			else if (strcmp(argv[i], "--qsg") == 0)
+				test_quadratic_sieve<mpz_int, long long>(mpz_int(n), base_size);
+			else if (strcmp(argv[i], "--mpqsg") == 0)
+				test_multiple_polynomial_quadratic_sieve<mpz_int, long long, short>(mpz_int(n), mpz_int(m1), base_size);
+			else if (strcmp(argv[i], "--siqsg") == 0)
+				test_self_initializing_quadratic_sieve<mpz_int, long long, unsigned char>(mpz_int(n), options);
 #endif
 #endif
-		else if (strcmp(argv[i], "--ec") == 0)
-			test_elliptic_curve<cpp_int, long long>(cpp_int(n), base_size);
-		else if (strcmp(argv[i], "--ecl") == 0)
-			test_elliptic_curve<long long, int>(atoll(n), static_cast<int>(base_size));
-		else if (strcmp(argv[i], "--ech") == 0)
-			test_elliptic_curve_homo<long long>(atoll(n));
-		else if (strcmp(argv[i], "--rhol") == 0)
-			test_pollard_rho(atoll(n), atoi(count));
-		else if (strcmp(argv[i], "--rho") == 0)
-			test_pollard_rho(cpp_int(n), atoi(count));
-		else if (strcmp(argv[i], "--p1l") == 0)
-			test_pollard_p1<long long, long>(atoll(n), atoi(count));
-		else if (strcmp(argv[i], "--p1") == 0)
-			test_pollard_p1<cpp_int, long long>(cpp_int(n), atoi(count));
-		else if (strncmp(argv[i], "--zv=", 5) == 0)
-			test_zn_var(atoi(argv[i] + 5)) ;
-		else if (strcmp(argv[i], "--power") == 0)
-			test_power(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m)) ;
-		else if (strcmp(argv[i], "--qr") == 0)
-			test_quadratic_residue<long long>(a, m, ps);
+			else if (strcmp(argv[i], "--ec") == 0)
+				test_elliptic_curve<cpp_int, long long>(cpp_int(n), base_size);
+			else if (strcmp(argv[i], "--ecl") == 0)
+				test_elliptic_curve<long long, int>(atoll(n), static_cast<int>(base_size));
+			else if (strcmp(argv[i], "--ech") == 0)
+				test_elliptic_curve_homo<long long>(atoll(n));
+			else if (strcmp(argv[i], "--rhol") == 0)
+				test_pollard_rho(atoll(n), atoi(count));
+			else if (strcmp(argv[i], "--rho") == 0)
+				test_pollard_rho(cpp_int(n), atoi(count));
+			else if (strcmp(argv[i], "--p1l") == 0)
+				test_pollard_p1<long long, long>(atoll(n), atoi(count));
+			else if (strcmp(argv[i], "--p1") == 0)
+				test_pollard_p1<cpp_int, long long>(cpp_int(n), atoi(count));
+			else if (strncmp(argv[i], "--zv=", 5) == 0)
+				test_zn_var(atoi(argv[i] + 5)) ;
+			else if (strcmp(argv[i], "--power") == 0)
+				test_power(static_cast<int>(a), static_cast<int>(b), static_cast<int>(m)) ;
+			else if (strcmp(argv[i], "--qr") == 0)
+				test_quadratic_residue<long long>(a, m, ps);
 #ifdef HAVE_BOOST
-		else if (strcmp(argv[i], "--qrc") == 0)
-			test_quadratic_residue<cpp_int>(cpp_int(a1), cpp_int(m1), cpp_int(ps1));
+			else if (strcmp(argv[i], "--qrc") == 0)
+				test_quadratic_residue<cpp_int>(cpp_int(a1), cpp_int(m1), cpp_int(ps1));
 #endif
 #ifdef HAVE_BOOST
-		else if (strcmp(argv[i], "--boost") == 0)
-			test_zn<cpp_int>(a, b, m) ;
+			else if (strcmp(argv[i], "--boost") == 0)
+				test_zn<cpp_int>(a, b, m) ;
 #endif
-		else if (strncmp(argv[i], "--a=", 4) == 0)
-			a = atoll(a1 = argv[i] + 4) ;
-		else if (strncmp(argv[i], "--b=", 4) == 0)
-			b = atoll(b1 = argv[i] + 4) ;
-		else if (strncmp(argv[i], "--m=", 4) == 0)
-			m = atoll(m1 = argv[i] + 4);
-		else if (strncmp(argv[i], "--ps=", 5) == 0)
-			ps = atoll(ps1 = argv[i] + 5);
+			else if (strncmp(argv[i], "--a=", 4) == 0)
+				a = atoll(a1 = argv[i] + 4) ;
+			else if (strncmp(argv[i], "--b=", 4) == 0)
+				b = atoll(b1 = argv[i] + 4) ;
+			else if (strncmp(argv[i], "--ps=", 5) == 0)
+				ps = atoll(ps1 = argv[i] + 5);
 	}
     catch (std::exception &exc)
     {

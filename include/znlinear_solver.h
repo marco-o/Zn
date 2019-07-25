@@ -24,7 +24,7 @@ namespace zn
 				for (const auto idx : smooth.factors())
 					matrix[idx + 1][slot] |= mask;
 			}
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+#if 0 // DBG_SIEVE >= DBG_SIEVE_DEBUG
 			std::cout << "Initial status\n";
 			trace_matrix(matrix, smooth_size);
 #endif
@@ -37,7 +37,7 @@ namespace zn
 			for (size_t k = 0; k < base_size; k++)
 			{
 				rows_idx.push_back(static_cast<int>(i));
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+#if 0 // DBG_SIEVE >= DBG_SIEVE_DEBUG
 				std::cout << "\nPass " << i << " out of " << base_size << "\n";
 				trace_matrix(matrix, smooth_size);
 #endif
@@ -51,7 +51,7 @@ namespace zn
 				{
 					swap_bit(matrix, i, j);
 					std::swap(smooth_perm[i], smooth_perm[j]);
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+#if 0 // DBG_SIEVE >= DBG_SIEVE_DEBUG
 					std::cout << "Swap columns " << i << ", " << j << std::endl;
 #endif
 				}
@@ -67,7 +67,7 @@ namespace zn
 			for (size_t c = rows_size - 1; c > 0; c--) // indexing on column, which is != from row, i.e. 'i'
 			{
 				int i = rows[c];
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
+#if 0 // DBG_SIEVE >= DBG_SIEVE_DEBUG
 				std::cout << "\nBack " << i << " out of " << base_size << "\n";
 				trace_matrix(matrix, smooth_size);
 #endif

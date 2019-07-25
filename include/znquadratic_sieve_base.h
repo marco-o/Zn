@@ -36,7 +36,7 @@ namespace zn
 	};
 
 	template <class large_int, class small_int>
-	small_int premultiplier(const large_int &n, const std::vector<small_int> &primes)
+	int premultiplier(const large_int &n, const std::vector<small_int> &primes)
 	{
 		int next_square_root = 2;
 		double max_value = 0;
