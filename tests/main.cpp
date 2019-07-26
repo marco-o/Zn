@@ -304,12 +304,20 @@ int main(int argc, char *argv[])
 				base_size = options.base_size = atoi(argv[i] + 12);
 			else if (strncmp(argv[i], "--order=", 8) == 0)
 				options.order = atoi(argv[i] + 8);
+			else if (strncmp(argv[i], "--sieve-bias=", 13) == 0)
+				options.sieve_bias = atoi(argv[i] + 13);
+			else if (strcmp(argv[i], "--no-multiplier") == 0)
+				options.multiplier = 1 ;
 			else if (strncmp(argv[i], "--multiplier=", 13) == 0)
 				options.multiplier = atoi(argv[i] + 13);
 			else if (strncmp(argv[i], "--m=", 4) == 0)
 				m = options.m = atoi(m1 = argv[i] + 4);
 			else if (strcmp(argv[i], "--double") == 0)
 				options.have_double = true;
+			else if (strcmp(argv[i], "--have-threads") == 0)
+				options.have_threading = true;
+			else if (strcmp(argv[i], "--no-threads") == 0)
+				options.have_threading = false;
 			else if (strncmp(argv[i], "--n=", 4) == 0)
 				n = argv[i] + 4;
 			else if (strcmp(argv[i], "--qs") == 0)

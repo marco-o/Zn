@@ -13,6 +13,7 @@
 #include <tuple>
 #include <thread>
 #include <vector>
+#include <atomic>
 #include <list>
 #include <map>
 #include "znqueue.h"
@@ -78,18 +79,19 @@ namespace zn
 		std::vector<value_type> temp_;
 		int order_;
 	};
-#ifdef HAVE_CANDIDATE_ANALYSYS
 	struct analysis_t
 	{
-		int smooth_attempts = 0;
-		int smooth_idle = 0;
-#ifdef HAVE_DOUBLE_LARGE_PRIME
-		int smooth_large_composite = 0;
-		int smooth_unfactored = 0;
-		int smooth_huge_prime = 0;
-#endif
+		std::atomic<int> smooth_attempts = 0;
+		std::atomic<int> smooth_prime_unused = 0;
+		std::atomic<int> smooth_idle = 0;
+		std::atomic<int> promoted = 0;
+		std::atomic<int> partial_promoted = 0;
+		std::atomic<int> direct = 0;
+		std::atomic<int> smooth_large_composite = 0;
+		std::atomic<int> smooth_unfactored = 0;
+		std::atomic<int> smooth_huge_prime = 0;
+		std::atomic<int> smooth_huge_composite = 0;
 	};
-#endif
 
 	template <class smooth_t>
 	class relations_graph_t
@@ -254,9 +256,15 @@ namespace zn
 	{
 		int order = 0; // number of factors osf 'a'
 		int base_size = 0; // number of primes in the factoring base
-		int multiplier = 1;
+		int multiplier = 0; // this forces the search for one, 1 avoids it
 		bool have_double = false; // use partial-partial relations
 		int m = 0 ; // sieving interval (half of it)
+		int sieve_bias = 0; // to experiment with higher or lower threshold
+#ifdef _DEBUG
+		bool have_threading = false;
+#else
+		bool have_threading = true;
+#endif
 	};
 
 	template <class large_int, class small_int, class real>
@@ -272,6 +280,7 @@ namespace zn
 		{
 			poly_t		poly;
 			small_int	thrs2;
+			small_int	thrs20;
 			small_int	thrs3;
 			large_int	n;
 			bool		have_double;
@@ -382,29 +391,25 @@ namespace zn
 					large_f[1] = 1;
 					s = inherit_t::smooth_candidate_e;
 				}
-#ifdef HAVE_DOUBLE_LARGE_PRIME
+				else if (reminder < info.thrs20)
+					s = inherit_t::smooth_prime_unused_e;
 				else if (info.have_double)
 				{
-					if (f > info.thrs3)
+					if (reminder > info.thrs3)
 						s = inherit_t::smooth_idle_e;
-					else if (!custom_prime_test(f))
+					else if (!custom_prime_test(reminder))
 					{
-						int count = 400; // TODO: how to determine this?
-						auto p1 = safe_cast<small_int>(pollards_rho(f, count, 2));
-						if (p1 > 1)
+						int count = 800; // TODO: how to determine this?
+						large_f[0] = safe_cast<small_int>(pollards_rho(reminder, count, 2));
+						if (large_f[0] > 1)
 						{
-							auto p2 = safe_cast<small_int>(f / p1);
-							if (p1 < p2)
-							{
-								large_f[0] = p1;
-								large_f[1] = p2;
-							}
+							large_f[1] = safe_cast<small_int>(reminder / large_f[0]);
+							if (large_f[0] > large_f[1])
+								std::swap(large_f[0], large_f[1]);
+							if (large_f[1] > info.thrs2)
+								s = inherit_t::smooth_huge_composite_e;
 							else
-							{
-								large_f[0] = p2;
-								large_f[1] = p1;
-							}
-							s = inherit_t::smooth_double_e;
+								s = inherit_t::smooth_double_e;
 						}
 						else
 							s = inherit_t::smooth_unfactored_e;
@@ -412,7 +417,6 @@ namespace zn
 					else
 						s = inherit_t::smooth_huge_prime_e;
 				}
-#endif
 			}
 			//
 			//	Accessors
@@ -463,15 +467,10 @@ namespace zn
 					large[index++] = large_f[i++];
 				while (i_rhs < static_cast<int>(rhs.s))
 					large[index++] = rhs.large_f[i_rhs++];
-#ifdef HAVE_DOUBLE_LARGE_PRIME
 				for (int i = index ; i < 2; i++)
 					large[i] = 1;
 				if (index > 2)
 					return false;
-#else
-				if (index > 0)
-					return false;
-#endif
 				for (int i = 0; i < index; i++)
 					large_f[i] = large[i];
 				for (int i = index; i < 2; i++)
@@ -593,14 +592,17 @@ namespace zn
 			size_t			  steps;
 
 			real			  offset;
-			small_int         thrs2;
+			small_int         thrs2;  // reduced square; values bugger are not considered
+			small_int		  thrs20; // exact square
 			small_int		  thrs3;
 			bool			  have_double;
 			sieve_stuff_t(small_int largest_prime, bool have_dbl)
 			{
 				have_double = have_dbl;
-				thrs2 = largest_prime * largest_prime / 32;
-				thrs3 = thrs2 * largest_prime / 4;
+				thrs20 = largest_prime * largest_prime;
+				const int div = 8;
+				thrs2 = thrs20 / div;
+				thrs3 = thrs2 * largest_prime / div;
 			}
 			void compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
 			{
@@ -633,7 +635,7 @@ namespace zn
 				LOG_INFO << "Premultiplier = " << options_.multiplier << log_base_t::newline_t();
 				n_ *= options_.multiplier;
 			}
-		int valid_for_a = 0;
+			int valid_for_a = 0;
 			for (auto p : primes)
 			{
 				typename inherit_t::base_t base = inherit_t::base_t::build(p, n_);
@@ -667,40 +669,42 @@ namespace zn
 			time_estimator_t time_estimator(base_.size());
 			log_time("Startup");
 #endif
-
-#ifdef HAVE_THREADING
-			int cores = system_info_t::cores();
-			for (int i = 0; i < cores; i++)
-			{
-				threads_.emplace_back(&self_initializing_quadratic_sieve_t::sieving_thread, this, std::ref(base_info));
-				polynomials_.push(generator());
-				polynomials_.push(generator());
-			}
-#else
-			polynomial_siqs_t<large_int, small_int> poly(generator().index, base_info, n_);
-
 			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), options_.have_double);
-			sieve_stuff.compute(poly, options_.m);
-#endif
+			int cores = system_info_t::cores();
+			if (options_.have_threading)
+				for (int i = 0; i < cores; i++)
+				{
+					threads_.emplace_back(&self_initializing_quadratic_sieve_t::sieving_thread, this, std::ref(base_info));
+					polynomials_.push(generator());
+					polynomials_.push(generator());
+				}
+			else
+			{
+				polynomial_siqs_t<large_int, small_int> poly(generator().index, base_info, n_);
+				sieve_stuff.compute(poly, options_.m);
+			}
 
 			int count = 0;
-			int promoted = 0;
 			size_t actual_bsize = 0;
 			while (smooths.size() < actual_bsize + 5 + actual_bsize / 100)
 			{
-#ifdef HAVE_THREADING
-				auto chunk = smooths_found_.pop();
-				polynomials_.push(generator());
-#else
-				auto seed = generator();
-				polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
-				auto chunk = sieve(poly, sieve_stuff);
-#endif
-				promoted += process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				std::vector<smooth_t> chunk;
+				if (options_.have_threading)
+				{
+					chunk = smooths_found_.pop();
+					polynomials_.push(generator());
+				}
+				else
+				{
+					auto seed = generator();
+					polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
+					chunk = sieve(poly, sieve_stuff);
+				}
+				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
 				actual_bsize = inherit_t::actual_base_size(base_);
 #ifdef HAVE_TIMING
-				time_estimator.update(static_cast<int>(smooths.size()), promoted);
+				time_estimator.update(static_cast<int>(smooths.size()), analysis_.promoted);
 #endif
 				LOG_INFO << count << ". Sieving.. " << smooths.size() 
 					     << ", candidates " << candidates.size() 
@@ -711,33 +715,34 @@ namespace zn
 #endif					     
 					     << "   \r" << log_base_t::flush_t();
 			}
-#ifdef HAVE_THREADING
-			polynomials_.clear();
-			for (int i = 0; i < cores ; i++)
-				polynomials_.push(polynomial_seed_t());
-			for (auto &thread : threads_)
-				thread.join();
-			// pick remaining smooths
-			while (!smooths_found_.empty())
+			if (options_.have_threading)
 			{
-				auto chunk = smooths_found_.pop();
-				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				polynomials_.clear();
+				for (int i = 0; i < cores; i++)
+					polynomials_.push(polynomial_seed_t());
+				for (auto &thread : threads_)
+					thread.join();
+				// pick remaining smooths
+				while (!smooths_found_.empty())
+				{
+					auto chunk = smooths_found_.pop();
+					process_candidates_chunk(base_, candidates, chunk, smooths, n_);
+				}
 			}
-#endif
 			LOG_INFO << log_base_t::newline_t()
-#ifdef HAVE_CANDIDATE_ANALYSYS
-			         << "Attempted " << analysis_.smooth_attempts << "\n"
-#ifdef HAVE_DOUBLE_LARGE_PRIME
-					  << "Detail: "  << analysis_.smooth_huge_prime
-					  << " (" << analysis_.smooth_huge_prime * 100 / analysis_.smooth_attempts << "%) likely prime "
-					  << ", "  << analysis_.smooth_large_composite
-					  << " (" << analysis_.smooth_large_composite * 100 / analysis_.smooth_attempts << "%) composite "
-					  << " and " << analysis_.smooth_unfactored
-					  << " (" << analysis_.smooth_unfactored * 100 / analysis_.smooth_attempts << "%) unfactored "
-				  	  << " left out: " << analysis_.smooth_idle
-#endif
-#endif // HAVE_DOUBLE_LARGE_PRIME
-				     << "\n";
+			         << "Attempted  " << analysis_.smooth_attempts << "\n"
+				     << "Direct     " << analysis_.direct << "\n"
+					 << "Promoted   " << analysis_.promoted << "\n"
+					 << "Large p.   " << analysis_.smooth_prime_unused << "\n"
+					 << "Idle       " << analysis_.smooth_idle << "\n" ;
+			if (options_.have_double)
+				LOG_INFO
+				     << "C.Partial  " << analysis_.smooth_large_composite << "\n"
+					 << "P.Partial  " << analysis_.partial_promoted << "\n"
+					 << "Huge p.    " << analysis_.smooth_huge_prime << "\n"
+					 << "Huge c.    " << analysis_.smooth_huge_composite << "\n"
+					 << "Unfactored " << analysis_.smooth_unfactored << "\n"
+ 				     << "\n";
 			log_time("Sieving");
 			if (smooths.size() < actual_bsize)
 			{
@@ -778,15 +783,9 @@ namespace zn
 				if (!s.invariant(n_, base_))
 					std::cout << "Hmmmm";
 #endif // DBG_SIEVE	
-#ifdef HAVE_MULTIPLIER
 				r = s.result(n1);
 				if (r != 1 && r != n1)
 					break;
-#else
-				r = s.result(n_);
-				if (r != 1 && r != n_)
-					break;
-#endif
 #if DBG_SIEVE >= DBG_SIEVE_INFO
 				else
 					failed++;
@@ -804,7 +803,7 @@ namespace zn
 		{
 			// build vector for sieving
 			smooth_vector_t result;
-			smooth_info_t info = { poly, sieve_stuff.thrs2, sieve_stuff.thrs3, n_, sieve_stuff.have_double};
+			smooth_info_t info = { poly, sieve_stuff.thrs2, sieve_stuff.thrs20, sieve_stuff.thrs3, n_, sieve_stuff.have_double};
 			info.runs.reserve(base_.size() * 2);
 			size_t count = info.poly.count();
 #ifdef _DEBUG
@@ -905,6 +904,8 @@ namespace zn
 			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 4 * real_op_t<real>::unit(); // small prime variation
 			if (info.have_double)
 				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
+			if (options_.sieve_bias)
+				sieve_thrs = static_cast<real>(sieve_thrs + options_.sieve_bias);
 
 			size_t size = sieve.values.size();
 			for (size_t i = 0; i < size; i++)
@@ -912,39 +913,39 @@ namespace zn
 				{   // static cast required, otherwise operation is done on unsigend
 					smooth_t s(info, static_cast<int>(i) - options_.m); 
 					analysis_.smooth_attempts++;
-					
 					if (s.type() <= inherit_t::smooth_double_e)
 					{
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
 						if (!s.invariant(n_, base_))
 							std::cout << "Hm\n";
 #endif // DBG_SIEVE	
-#ifdef HAVE_DOUBLE_LARGE_PRIME
 						if (s.type() == smooth_double_e)
 							analysis_.smooth_large_composite++;
-#endif
 						result.push_back(s);
 					}
 					else
 					{
-#ifdef HAVE_DOUBLE_LARGE_PRIME
 						switch (s.type())
 						{
+						case smooth_prime_unused_e:
+							analysis_.smooth_prime_unused++;
+							break;
 						case smooth_unfactored_e:
 							analysis_.smooth_unfactored++;
 							break;
 						case smooth_huge_prime_e:
 							analysis_.smooth_huge_prime++;
 							break;
+						case smooth_huge_composite_e:
+							analysis_.smooth_huge_composite++;
+							break;
 						default:
 							analysis_.smooth_idle++;
 							break;
 						}
-#endif
 					}
 				}
 		}
-#ifdef HAVE_THREADING
 		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info)
 		{
 			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), options_.have_double);
@@ -963,34 +964,36 @@ namespace zn
 				std::cout << "Exception in thread: " << exc.what() << std::endl;
 			}
 		}
-#endif
-		int  process_candidates_chunk(std::vector<base_ref_t> &base,
+		void process_candidates_chunk(std::vector<base_ref_t> &base,
  									  relations_graph_t<smooth_t>  &relations,
 									  std::vector<smooth_t> &chunk,
 									  std::vector<smooth_t> &smooths,
 									  const large_int &n)
 		{
-			int promoted = 0;
 			for (auto &smooth : chunk)
 			{
-				switch (smooth.type())
+				auto s = smooth.type();
+				switch (s)
 				{
 				case smooth_valid_e:
 					register_smooth(smooths, smooth);
+					analysis_.direct++;
 					break;
 				case smooth_candidate_e:
 				case smooth_double_e:
 					if (relations.add_smooth(smooth, base))
 					{
 						register_smooth(smooths, smooth);
-						promoted++;
+						if (s == smooth_candidate_e)
+							analysis_.promoted++;
+						else
+							analysis_.partial_promoted++;
 					}
 					break;
 				default: //, smooth_idle_e, smooth_unfactored_e
 					break;
 				}
 			}
-			return promoted;
 		}
 		void register_smooth(std::vector<smooth_t> &smooths, const smooth_t &smooth)
 		{
@@ -1014,14 +1017,12 @@ namespace zn
 		std::vector<size_t> poly_stat_;
 		int					poly_count_ = 0;
 #endif
-#ifdef HAVE_THREADING
+
 		shared_list_t<polynomial_seed_t> polynomials_;
 		shared_list_t<smooth_vector_t>   smooths_found_;
 		std::vector<std::thread>	     threads_;
-#endif
-#ifdef HAVE_CANDIDATE_ANALYSYS
+
 		analysis_t analysis_;
-#endif
 #ifdef HAVE_TIMING
 		std::chrono::steady_clock::time_point start_;
 #endif

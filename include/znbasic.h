@@ -65,9 +65,8 @@ private:
 #define HAVE_THREADING
 #endif
 #define HAVE_CANDIDATE_ANALYSYS
-//#define HAVE_DOUBLE_LARGE_PRIME
+#define HAVE_DOUBLE_LARGE_PRIME
 #define HAVE_TIMING
-#define HAVE_MULTIPLIER
 #ifdef HAVE_TIMING
 #include <chrono>
 #endif
@@ -160,11 +159,7 @@ namespace zn
 		}
 		static const int cores(void)
 		{
-#ifdef HAVE_THREADING
 			return std::thread::hardware_concurrency() ;
-#else
-			return 1;
-#endif
 		}
 	};
 

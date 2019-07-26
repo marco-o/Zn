@@ -96,7 +96,9 @@ namespace zn
 	class quadratic_sieve_base_t
 	{
 	public:
-		enum smooth_status_e { smooth_valid_e, smooth_candidate_e, smooth_double_e, smooth_unfactored_e, smooth_huge_prime_e, smooth_idle_e };
+		enum smooth_status_e { smooth_valid_e, smooth_candidate_e, smooth_double_e, 
+			                   smooth_unfactored_e, smooth_prime_unused_e, 
+							   smooth_huge_composite_e, smooth_huge_prime_e, smooth_idle_e };
 		struct base_t
 		{
 			std::vector<small_int>	prime_;
@@ -170,7 +172,7 @@ namespace zn
 			for (size_t i = 0; i < size; i++)
 				base_index[i] = std::make_pair(base[i].smooths.size(), i);
 			std::sort(base_index.begin(), base_index.end());
-			int reduce = static_cast<int>(base.size() / 5);
+			int reduce = static_cast<int>(base.size() / 4);
 
 			for (int k = 0 ; k < reduce; k++)
 			{
