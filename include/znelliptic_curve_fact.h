@@ -13,7 +13,7 @@ namespace zn
 		void init(small_int bound)
 		{
 			double logb = std::log(static_cast<double>(bound));
-			int  b1 = safe_cast<int>(pow(bound, 0.33));
+			int  b1 = safe_cast<int>(pow(bound, 0.5));
 			std::vector<small_int> primes = eratosthenes_sieve<small_int, int>(b1);
 			small_int exp1 = 1;
 			for (auto prime : primes)
@@ -40,7 +40,7 @@ namespace zn
 				pw = powm<large_int>(pw, exp_[i], n);
 				if (i % 4 == 0)
 				{
-					auto g = euclidean_algorithm<large_int>(pw - 1, n);
+					large_int g = euclidean_algorithm<large_int>(pw - 1, n);
 					if (g == n)
 						return 1;
 					else if (g > 1)

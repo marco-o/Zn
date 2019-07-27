@@ -7,6 +7,8 @@ set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h ../include/znlinea
 				  ../include/znquadratic_sieve_base.h ../include/znquadratic_sieve.h
 				  ../include/znpolynomial.h ../include/znmpqs.h ../include/znsiqs.h 
 				  ../include/znqueue.h ../include/znelliptic_curve_fact.h)
+set (SMALL_HEADERS ../include/basic.h ../include/zneratosthenes_sieve.h 
+                   ../include/znelliptic_curve_fact.h)
 include_directories(../include)
 set (EXECUTABLE_OUTPUT_PATH ../bin)
 
@@ -27,6 +29,8 @@ endif (BOOST_ROOT)
 
 add_executable(main main.cpp logger.cpp ${COMMON_HEADERS})
 add_executable(numbox numbox.cpp logger.cpp ${COMMON_HEADERS})
+add_executable(small small.cpp logger.cpp ${COMMON_HEADERS})
+
 
 if (Boost_UNIT_TEST_FRAMEWORK_FOUND)
 	if (GMP_ROOT)

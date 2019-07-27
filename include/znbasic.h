@@ -61,9 +61,10 @@ private:
 #define DBG_SIEVE			DBG_SIEVE_INFO
 #endif
 
-#ifndef _DEBUG
-#define HAVE_THREADING
-#endif
+
+#define HAVE_THREADING // option moved on run-time on SIQS
+
+#define FAVE_FACTORIZATION_TEST
 #define HAVE_CANDIDATE_ANALYSYS
 #define HAVE_DOUBLE_LARGE_PRIME
 #define HAVE_TIMING
@@ -199,7 +200,7 @@ namespace zn
 	{
 		while (b > 0)
 		{
-			auto c = a % b;
+			T c = a % b;
 			a = b;
 			b = c;
 		}

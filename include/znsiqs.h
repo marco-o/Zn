@@ -397,26 +397,46 @@ namespace zn
 				{
 					if (reminder > info.thrs3)
 						s = inherit_t::smooth_idle_e;
-					else if (!custom_prime_test(reminder))
-					{
-						int count = 800; // TODO: how to determine this?
-						large_f[0] = safe_cast<small_int>(pollards_rho(reminder, count, 2));
-						if (large_f[0] > 1)
-						{
-							large_f[1] = safe_cast<small_int>(reminder / large_f[0]);
-							if (large_f[0] > large_f[1])
-								std::swap(large_f[0], large_f[1]);
-							if (large_f[1] > info.thrs2)
-								s = inherit_t::smooth_huge_composite_e;
-							else
-								s = inherit_t::smooth_double_e;
-						}
-						else
-							s = inherit_t::smooth_unfactored_e;
-					}
 					else
-						s = inherit_t::smooth_huge_prime_e;
+					{
+#ifdef FAVE_FACTORIZATION_TEST
+						auto &file = test_file();
+						file << reminder;
+#endif
+						if (!custom_prime_test(reminder))
+						{
+							int count = 800; // TODO: how to determine this?
+#ifdef FAVE_FACTORIZATION_TEST
+							file << " c ";
+#endif
+							large_f[0] = safe_cast<small_int>(pollards_rho(reminder, count, 2));
+							if (large_f[0] > 1)
+							{
+								large_f[1] = safe_cast<small_int>(reminder / large_f[0]);
+								if (large_f[0] > large_f[1])
+									std::swap(large_f[0], large_f[1]);
+#ifdef FAVE_FACTORIZATION_TEST
+								test_file() << large_f[0] << " x " << large_f[1];
+#endif
+								if (large_f[1] > info.thrs2)
+									s = inherit_t::smooth_huge_composite_e;
+								else
+									s = inherit_t::smooth_double_e;
+							}
+							else
+							{
+								s = inherit_t::smooth_unfactored_e;
+							}
+						}
+#ifdef FAVE_FACTORIZATION_TEST
+						else
+							file << " p";
+						file << "\n";
+#endif
+					}
 				}
+				else
+					s = inherit_t::smooth_huge_prime_e;
 			}
 			//
 			//	Accessors
@@ -575,6 +595,13 @@ namespace zn
 				return true;  // Yeheh! probably prime.
 			}
 		private:
+#ifdef FAVE_FACTORIZATION_TEST
+			std::ofstream &test_file(void)
+			{
+				static std::ofstream ofile("test.txt");
+				return ofile;
+			}
+#endif
 			std::vector<int>		factors_; // indexes into base array
 			small_int			    large_f[2];
 			large_int				sqr; // product of prime with even exponents (/ 2)

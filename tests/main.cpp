@@ -24,10 +24,7 @@
 #include "znmpqs.h"
 #include "znsiqs.h"
 
-namespace zn
-{
 
-}
 #ifdef HAVE_BOOST
 using namespace boost::multiprecision;
 #endif
