@@ -13,12 +13,12 @@ namespace zn
 		void init(small_int bound)
 		{
 			double logb = std::log(static_cast<double>(bound));
-			int  b1 = safe_cast<int>(pow(bound, 0.5));
+			int  b1 = safe_cast<int>(bound);
 			std::vector<small_int> primes = eratosthenes_sieve<small_int, int>(b1);
 			small_int exp1 = 1;
 			for (auto prime : primes)
 			{
-				int exp = static_cast<int>(logb / std::log(static_cast<double>(prime)) + 0.5);
+				int exp = static_cast<int>(logb / std::log(static_cast<double>(prime)) + 0.3);
 				for (int j = 0; j < exp; j++)
 					if (exp1 < std::numeric_limits<small_int>::max() / prime)
 						exp1 *= prime;
@@ -87,7 +87,7 @@ namespace zn
 		if (d < n)
 			return d;
 		else
-			return 0;
+			return n;
 	}
 
 	template <class large_int>
@@ -183,16 +183,39 @@ namespace zn
 			large_int x;
 			large_int y;
 		};
-		elliptic_curve_t(const large_int &n) : n_(n){	}
+		typedef int small_int;
+		elliptic_curve_t(small_int bound) 
+		{	
+			double logb = std::log(static_cast<double>(bound));
+			int  b1 = safe_cast<int>(pow(bound, 0.5));
+			std::vector<small_int> primes = eratosthenes_sieve<small_int, int>(b1);
+			small_int exp1 = 1;
+			for (auto prime : primes)
+			{
+				int exp = static_cast<int>(logb / std::log(static_cast<double>(prime)) + 0.5);
+				for (int j = 0; j < exp; j++)
+					if (exp1 < std::numeric_limits<small_int>::max() / prime)
+						exp1 *= prime;
+					else
+					{
+						exp_.push_back(exp1);
+						exp1 = prime;
+					}
+			}
+			if (exp1 != 1)
+				exp_.push_back(exp1);
+		}
 		large_int factor(void) const { return f_; }
-		bool run(const large_int &a, point_t &pt, const large_int &k)
+		bool run(const large_int &n, const large_int &a, point_t &pt)
 		{
-			point_t dummy;
 			a_ = a;
-			b_ = (pt.y * pt.y - pt.x * (pt.x * pt.x + a_)) % n_;
-			bool result = kadd(pt, k, dummy);
-			pt = dummy;
-			return result;
+			n_ = n;
+			b_ = (pt.y * pt.y - pt.x * (pt.x * pt.x + a_)) % n;
+			for (auto e : exp_)
+				if (kadd(pt, e, pt))
+					return true;
+
+			return false;
 		}
 		// a = 5, n = 455839
 		bool test(const large_int &a, const point_t &pt)
@@ -216,7 +239,8 @@ namespace zn
 			x1 = (x1 * pt.x + b_ - y1) % n_;
 			return x1 == 0;
 		}
-		bool kadd(const point_t &pt, const large_int &k, point_t &result)
+		template <class K>
+		bool kadd(const point_t &pt, const K &k, point_t &result)
 		{
 			bool result_set = false;
 			unsigned int bits = msb(k);
@@ -270,6 +294,8 @@ namespace zn
 			result.x = resx;
 			return false;
 		}
+	private:
+		std::vector<small_int> exp_;
 		large_int f_;
 		large_int a_;
 		large_int b_;
