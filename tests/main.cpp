@@ -90,7 +90,7 @@ void test_pollard_p1(const large_int &n, int count)
 	exit(0);
 }
 
-
+#if 0
 template <class large_int>
 void test_elliptic_curve_homo(const large_int &n)
 {
@@ -126,7 +126,7 @@ void test_elliptic_curve(const large_int &n, small_int range)
 	}
 	std::cout << "Factor = " << ec.factor() << std::endl;
 }
-
+#endif
 void test_eratosthenes(int bound)
 {
     auto p = eratosthenes_sieve<int>(bound) ;
@@ -342,12 +342,15 @@ int main(int argc, char *argv[])
 				test_self_initializing_quadratic_sieve<mpz_int, long long, unsigned char>(mpz_int(n), options);
 #endif
 #endif
+
+#if 0
 			else if (strcmp(argv[i], "--ec") == 0)
 				test_elliptic_curve<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--ecl") == 0)
 				test_elliptic_curve<long long, int>(atoll(n), static_cast<int>(base_size));
 			else if (strcmp(argv[i], "--ech") == 0)
 				test_elliptic_curve_homo<long long>(atoll(n));
+#endif
 			else if (strcmp(argv[i], "--rhol") == 0)
 				test_pollard_rho(atoll(n), atoi(count));
 			else if (strcmp(argv[i], "--rho") == 0)

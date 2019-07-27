@@ -62,7 +62,7 @@ private:
 #endif
 
 
-#define HAVE_THREADING // option moved on run-time on SIQS
+//#define HAVE_THREADING // option moved on run-time on SIQS
 
 #define FAVE_FACTORIZATION_TEST
 #define HAVE_CANDIDATE_ANALYSYS
