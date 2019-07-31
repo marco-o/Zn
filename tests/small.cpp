@@ -6,6 +6,7 @@
 #include "znbasic.h"
 #include "zneratosthenes_sieve.h"
 #include "znelliptic_curve_fact.h"
+#include "znquadratic_residue.h"
 #include "boost/multiprecision/cpp_int.hpp"
 #include <vector>
 #include <fstream>
@@ -46,9 +47,13 @@ namespace zn
 		{
 			std::vector<const prime_t *> base;
 			std::vector<real_t> values;
-			size_t m2;
+			small_int m2;
 			size_t base_size;
-			info_t(size_t m = 10000, size_t bs = 32) : values(m * 2), m2(m * 2), base_size(bs) {}
+			small_int a;
+			small_int a2;
+			small_int b;
+			large_int c;
+			info_t(size_t m = 10000, size_t bs = 40) : values(m * 2), m2(m * 2), base_size(bs) {}
 		};
 		quadratic_sieve_cached_t(small_int primes = 256)
 		{
@@ -62,23 +67,70 @@ namespace zn
 		small_int factor(large_int n, info_t &info)
 		{
 			info.base.clear() ;
-			for (auto &prime : primes_)
-			{
-				small_int r = n % prime.value;
-				if (prime.residue[r]) // keep it!
-				{
-					info.base.push_back(&prime);
-					if (info.base.size() > info.base_size)
+			auto it = primes_.begin();
+			auto end = primes_.end();
+			info.a = 1;
+			small_int sqr2n = static_cast<small_int>(std::sqrt(n * 2));
+			small_int m = 40000;
+			small_int a0 = static_cast<small_int>(sqrt(sqr2n / m));
+			for ( ; it != end ; ++it)
+				if (it->residue[n % it->value]) // keep it!
+					if (info.a == 1 && it->value > a0)
+					{
+						info.a = it->value;
+						info.a2 = info.a * info.a;
+						info.b = quadratic_residue<small_int>(static_cast<small_int>(n % info.a2), info.a2, info.a); // then take 'square root'...
+						info.c = (info.b * info.b - n) / info.a2;
+					}
+					else if (info.base.size() < info.base_size)
+						info.base.push_back(&(*it));
+					else
 						break;
-				}
-			}
+			info.m2 = m * 2;
+			info.values.resize(info.m2);
+			std::fill(info.values.begin(), info.values.end(), 0);
 			for (auto p : info.base)
 			{
-				for (size_t i = 0; i < info.m2 ; i += p->value)
+				small_int a = info.a % p->value;
+				small_int a_1 = p->inverse[a];
+				small_int a1 = (a_1 * a_1) % p->value;
+				small_int t = n % p->value;
+				small_int t0 = (a1 * (p->residue[t] - info.b)) % p->value;
+				small_int t1 = (a1 * (-p->residue[t] - info.b)) % p->value;
+				small_int index0 = (m + t0 + p->value) % p->value;
+				small_int index1 = (m + t1 + p->value) % p->value;
+				small_int index = std::min(index0, index1);
+				small_int delta = std::max(index0, index1) - index ;
+				small_int m2 = info.m2 - delta;
+				small_int i = index;
+				for (; i < m2 ; i += p->value)
 				{
 					info.values[i] += p->logp;
+					info.values[i + delta] += p->logp;
 				}
+				if (i < info.m2)
+					info.values[i] += p->logp;
 			}
+			real_t logp = static_cast<real_t>((std::log(sqr2n / 8) + std::log(m)) * log_unit_e);
+			int count = 0;
+			for (small_int i = 0 ; i < info.m2 ; i++)
+				if (info.values[i] > logp)
+				{
+					small_int x = i - m;
+					large_int f1 = info.a2 * x + 2 * info.b; // evaluate polynomial
+					large_int f = f1 * x + info.c;
+					if (f < 0)
+						f = -1;
+					for (auto p : info.base)
+						while (f % p->value == 0)
+						{
+							f /= p->value;
+						}
+					if (f == 1)
+						count++;
+					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
+				}
+//			std::cout << "found " << count << ", required = " << info.base.size() << std::endl;
 			return 1;
 		}
 	private:
@@ -312,7 +364,7 @@ namespace zn
 			int examined = 0;
 			int factored = 0;
 			std::cout << "Quadratic sieve\n";
-			quadratic_sieve_cached_t<long long> qs(64);
+			quadratic_sieve_cached_t<long long> qs(128);
 			quadratic_sieve_cached_t<long long>::info_t qsinfo;
 			for (const auto &item : items)
 				if (!item.declared_prime)
