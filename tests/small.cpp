@@ -14,6 +14,9 @@
 #include <numeric>
 #include <map>
 
+#define HAVE_LARGE_PRIME
+
+
 namespace zn
 {
 	// A quadratic sieve class for factoring numbers up to (anout) 19 (2^63) digits
@@ -43,17 +46,43 @@ namespace zn
 					residue[it.first] = it.second;
 			}
 		};
-		struct info_t
+		typedef long long factors_t;
+		struct smooth_t
 		{
-			std::vector<const prime_t *> base;
-			std::vector<real_t> values;
-			small_int m2;
-			size_t base_size;
+			factors_t factors;
+			large_int sqr; // product of prime with even exponents (/ 2)
+			large_int axb;// a *x + b, the number squared
+			smooth_t(large_int ab = 1) : axb(ab), factors(0), sqr(1) {}
+		};
+		struct poly_seed_t
+		{
+			double quality;
+			int index;
+		};
+		struct poly_t
+		{
 			small_int a;
 			small_int a2;
 			small_int b;
 			large_int c;
-			info_t(size_t m = 10000, size_t bs = 40) : values(m * 2), m2(m * 2), base_size(bs) {}
+			small_int m; // suggested value for sieve interval
+			small_int m2; // m * 2
+		};
+		struct info_t
+		{
+			large_int					 n;
+			std::vector<const prime_t *> base; 
+			size_t						 base_size; // size of the above
+			std::vector<real_t>			 values;
+			std::vector<smooth_t>		 smooths;
+#ifdef HAVE_LARGE_PRIME
+			std::map<small_int, smooth_t> large_primes;
+#endif
+			std::vector<poly_seed_t>	 poly;
+			small_int					 m2;
+			small_int					 sqr2n; // sqrt(n * 2)
+			small_int					 sqrn; // sqrt(n)
+			info_t(size_t m = 10000, size_t bs = 32) : values(m * 2), m2(m * 2), base_size(bs - 1) {}
 		};
 		quadratic_sieve_cached_t(small_int primes = 256)
 		{
@@ -64,76 +93,211 @@ namespace zn
 			for (auto p : prime)
 				primes_.push_back(prime_t(p));
 		}
-		small_int factor(large_int n, info_t &info)
+		small_int factor(const large_int &n, info_t &info)
 		{
-			info.base.clear() ;
-			auto it = primes_.begin();
-			auto end = primes_.end();
-			info.a = 1;
-			small_int sqr2n = static_cast<small_int>(std::sqrt(n * 2));
-			small_int m = 40000;
-			small_int a0 = static_cast<small_int>(sqrt(sqr2n / m));
-			for ( ; it != end ; ++it)
-				if (it->residue[n % it->value]) // keep it!
-					if (info.a == 1 && it->value > a0)
-					{
-						info.a = it->value;
-						info.a2 = info.a * info.a;
-						info.b = quadratic_residue<small_int>(static_cast<small_int>(n % info.a2), info.a2, info.a); // then take 'square root'...
-						info.c = (info.b * info.b - n) / info.a2;
-					}
-					else if (info.base.size() < info.base_size)
-						info.base.push_back(&(*it));
-					else
-						break;
-			info.m2 = m * 2;
-			info.values.resize(info.m2);
-			std::fill(info.values.begin(), info.values.end(), 0);
-			for (auto p : info.base)
+			init_info(n, info);
+			std::sort(info.poly.begin(), info.poly.end(), [](const poly_seed_t &lhs, const poly_seed_t &rhs) {
+				return lhs.quality < rhs.quality;
+			});
+			for (const auto &poly_seed : info.poly)
 			{
-				small_int a = info.a % p->value;
-				small_int a_1 = p->inverse[a];
-				small_int a1 = (a_1 * a_1) % p->value;
-				small_int t = n % p->value;
-				small_int t0 = (a1 * (p->residue[t] - info.b)) % p->value;
-				small_int t1 = (a1 * (-p->residue[t] - info.b)) % p->value;
-				small_int index0 = (m + t0 + p->value) % p->value;
-				small_int index1 = (m + t1 + p->value) % p->value;
-				small_int index = std::min(index0, index1);
-				small_int delta = std::max(index0, index1) - index ;
-				small_int m2 = info.m2 - delta;
-				small_int i = index;
-				for (; i < m2 ; i += p->value)
-				{
-					info.values[i] += p->logp;
-					info.values[i + delta] += p->logp;
-				}
-				if (i < info.m2)
-					info.values[i] += p->logp;
+				poly_t poly = create_poly(info, poly_seed);
+				info.values.resize(poly.m * 2);
+				std::fill(info.values.begin(), info.values.end(), 0);
+				sieve(poly, info);
+				collect_smooth(info, poly);
+				if (info.smooths.size() > info.base_size + 2)
+					return 2;
 			}
-			real_t logp = static_cast<real_t>((std::log(sqr2n / 8) + std::log(m)) * log_unit_e);
-			int count = 0;
-			for (small_int i = 0 ; i < info.m2 ; i++)
-				if (info.values[i] > logp)
-				{
-					small_int x = i - m;
-					large_int f1 = info.a2 * x + 2 * info.b; // evaluate polynomial
-					large_int f = f1 * x + info.c;
-					if (f < 0)
-						f = -1;
-					for (auto p : info.base)
-						while (f % p->value == 0)
-						{
-							f /= p->value;
-						}
-					if (f == 1)
-						count++;
-					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
-				}
-//			std::cout << "found " << count << ", required = " << info.base.size() << std::endl;
+			//			std::cout << "found " << count << ", required = " << info.base.size() << std::endl;
 			return 1;
 		}
 	private:
+		poly_t create_poly(info_t &info, const poly_seed_t &seed)
+		{
+			poly_t poly;
+
+			if (seed.index > 0)
+			{
+				poly.a = info.base[seed.index]->value;
+				poly.a2 = poly.a * poly.a;
+				poly.b = quadratic_residue<small_int>(static_cast<small_int>(info.n % poly.a2), poly.a2, poly.a); // then take 'square root'...
+				poly.c = (poly.b * poly.b - info.n) / poly.a2;
+				poly.m = 2 * (info.sqr2n / (2 * poly.a2)); // I want it even
+			}
+			else
+			{
+				poly.a = 1;
+				poly.a2 = 1 ;
+				poly.b = 0;
+				poly.c = info.n;
+				poly.m = info.m2;
+			}
+			poly.m2 = poly.m * 2;
+			return poly;
+		}
+		void init_info(large_int n, info_t &info)
+		{
+			info.n = n;
+			info.base.clear();
+			info.smooths.clear();
+			info.poly.clear();
+#ifdef HAVE_LARGE_PRIME
+			info.large_primes.clear();
+#endif
+			info.sqrn  = static_cast<small_int>(std::sqrt(n));
+			info.sqr2n = static_cast<small_int>(std::sqrt(n * 2));
+			small_int m = info.m2;
+			double a0 = sqrt(info.sqr2n / m);
+			auto it = primes_.begin();
+			auto end = primes_.end();
+			for (; it != end; ++it)
+				if (it->residue[n % it->value]) // keep it!
+					if (info.base.size() < info.base_size)
+					{
+						info.base.push_back(&(*it));
+						double t = 1.5 * it->value / a0;
+						double q = t + 1 / t;
+						if (q < 4)
+						{
+							poly_seed_t poly{ q, it->value };
+							info.poly.push_back(poly);
+						}
+					}
+					else
+						break;
+			poly_seed_t poly{20.0, -1 };
+			info.poly.push_back(poly);
+		}
+		void sieve(const poly_t &poly, info_t &info)
+		{
+			if (poly.a == 1)
+			{
+				for (auto p : info.base)
+				{
+					small_int t = p->residue[info.n % p->value];
+					small_int r = 2 * p->value - ((info.sqrn - poly.m) % p->value) ;
+					small_int i0 = (r + t) % p->value;
+					if (p->value == 2)
+					{
+						for (int i = i0; i < poly.m2 ; i += 2)
+							info.values[i] += p->logp;
+					}
+					else
+					{
+						small_int i1 = (r - t) % p->value;
+						small_int index = std::min(i0, i1);
+						small_int delta = std::max(i0, i1) - index;
+						small_int m2 = poly.m2 - delta;
+						small_int i = index;
+						for (; i < m2; i += p->value)
+						{
+							info.values[i] += p->logp;
+							info.values[i + delta] += p->logp;
+						}
+						if (i < poly.m2)
+							info.values[i] += p->logp;
+					}
+				}
+			}
+			else
+				for (auto p : info.base)
+				{
+					small_int a = poly.a % p->value;
+					if (a == 0)
+					{
+
+					}
+					else if (p->value > 2)
+					{
+						small_int a_1 = p->inverse[a];
+						small_int a1 = (a_1 * a_1) % p->value;
+						small_int t = info.n % p->value;
+						small_int t0 = (a1 * (p->residue[t] - poly.b)) % p->value;
+						small_int t1 = (a1 * (-p->residue[t] - poly.b)) % p->value;
+						small_int index0 = (poly.m + t0 + p->value) % p->value;
+						small_int index1 = (poly.m + t1 + p->value) % p->value;
+						small_int index = std::min(index0, index1);
+						small_int delta = std::max(index0, index1) - index;
+						small_int m2 = poly.m2 - delta;
+						small_int i = index;
+						for (; i < m2; i += p->value)
+						{
+							info.values[i] += p->logp;
+							info.values[i + delta] += p->logp;
+						}
+						if (i < poly.m2)
+							info.values[i] += p->logp;
+					}
+					else
+					{
+						small_int m2 = poly.m2 - 1;
+						for (int i = 1; i < m2; i += 2)
+							info.values[i] += p->logp;
+					}
+				}
+		}
+		void collect_smooth(info_t &info, poly_t &poly)
+		{
+#ifdef HAVE_LARGE_PRIME
+			int large_prime = 0;
+			small_int thrsp = info.base[info.base_size-1]->value;
+			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 64) + std::log(poly.m) - std::log(thrsp) / 2) * log_unit_e);
+			thrsp = thrsp * static_cast<int>(sqrt(thrsp));
+#else
+			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 64) + std::log(poly.m)) * log_unit_e);
+#endif
+			for (small_int i = 0; i < poly.m2; i++)
+				if (info.values[i] > logp)
+				{
+					large_int f = 0;
+					large_int x = i - poly.m ;
+					if (poly.a == 1)
+					{
+						x += info.sqrn;
+						f = x * x - info.n ;
+					}
+					else
+					{
+						large_int f1 = poly.a2 * x + 2 * poly.b; // evaluate polynomial
+						f = f1 * x + poly.c;
+					}
+					smooth_t smooth(poly.a2 * x + poly.b);
+					if (f < 0)
+					{
+						f = -f;
+						smooth.factors = 1;
+					}
+					for (size_t k = 0; k < info.base_size; k++)
+					{
+						int count = 0;
+						small_int p = info.base[k]->value;
+						while (f % p == 0)
+						{
+							f /= p;
+							count++;
+						}
+						if (count & 1)
+							smooth.factors |= 1LL << (k + 1);
+						for (int j = 1; j < count; j += 2)
+							smooth.sqr *= p;
+					}
+					if (f == 1)
+						info.smooths.push_back(smooth);
+#ifdef HAVE_LARGE_PRIME
+					else if (f < thrsp)
+					{
+						small_int f1 = static_cast<small_int>(f);
+						auto it = info.large_primes.find(f1);
+						if (it == info.large_primes.end())
+							info.large_primes[f1] = smooth;
+						else
+							info.smooths.push_back(smooth); // ok, some extra processing is required
+					}
+#endif
+					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
+				}
+		}
 		std::vector<prime_t> primes_;
 	};
 
@@ -145,6 +309,7 @@ namespace zn
 		int count = 0;
 		int useed = 0;
 		int bound = 10000;
+		int base_size = 32;
 	};
 	template <class large_int, class small_int>
 	class prime_tester_t
@@ -366,13 +531,16 @@ namespace zn
 			std::cout << "Quadratic sieve\n";
 			quadratic_sieve_cached_t<long long> qs(128);
 			quadratic_sieve_cached_t<long long>::info_t qsinfo;
+			qsinfo.base_size = info.base_size;
+			qsinfo.m2 = info.bound;
 			for (const auto &item : items)
 				if (!item.declared_prime)
 				{
 					examined++;
 					if (examined % 1000 == 0)
 						std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
-					qs.factor(static_cast<long long>(item.n), qsinfo);
+					if (qs.factor(static_cast<long long>(item.n), qsinfo) > 1)
+						factored++;
 					if (info.count && examined >= info.count)
 						break;
 				}
@@ -487,6 +655,8 @@ int main(int argc, char *argv[])
 			info.algo = atoi(argv[i] + 7);
 		else if (strncmp(argv[i], "--count=", 8) == 0)
 			info.count = atoi(argv[i] + 8);
+		else if (strncmp(argv[i], "--base-size=", 12) == 0)
+			info.base_size = atoi(argv[i] + 12);
 		else if (strcmp(argv[i], "--use-long") == 0)
 			use_cppint = false;
 	if (info.file)
