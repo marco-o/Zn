@@ -14,13 +14,54 @@
 #include <numeric>
 #include <map>
 
-#define HAVE_LARGE_PRIME
+//#define HAVE_LARGE_PRIME
 
 
 namespace zn
 {
-	// A quadratic sieve class for factoring numbers up to (anout) 19 (2^63) digits
-	template <class large_int = long long, class small_int = int>
+	class stats_t
+	{
+	public:
+		void processed(void) { processed_++; }
+		void direct(void) { direct_++; }
+		void discarded(void) { discarded_++; }
+		void promoted(void) { promoted_++; }
+		void polynomials(void) { polynomials_++; }
+		void large_primes(void) { large_primes_++; }
+		void resume(void)
+		{
+			std::cout << "Processed = " << processed_ << "\n"
+				      << "Discarded = " << discarded_ << "\n"
+#ifdef HAVE_LARGE_PRIME
+					  << "Direct = " << direct_ << "\n"
+					  << "Large = " << large_primes_ << "\n"
+					  << "Promoted = " << promoted_ << "\n"
+#endif
+					  << "Accepted = " << (processed_ - discarded_) << "\n"
+					  << "Polynomials = " << polynomials_  << "\n"
+				;
+		}
+	private:
+		int processed_ = 0;
+		int promoted_ = 0;
+		int discarded_ = 0; // smooth detection failures
+		int large_primes_ = 0;
+		int direct_ = 0;
+		int polynomials_ = 0;
+	};
+	struct stats_none_t
+	{
+	public:
+		void processed(void) {}
+		void direct(void) {}
+		void discarded(void) {}
+		void promoted(void) {}
+		void polynomials(void) {}
+		void large_primes(void) {}
+		void resume(void) {}
+	};
+	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
+	template <class stat_t = stats_t, class large_int = long long, class small_int = int>
 	class quadratic_sieve_cached_t
 	{
 	public:
@@ -49,15 +90,15 @@ namespace zn
 		typedef long long factors_t;
 		struct smooth_t
 		{
-			factors_t factors;
 			large_int sqr; // product of prime with even exponents (/ 2)
 			large_int axb;// a *x + b, the number squared
-			smooth_t(large_int ab = 1) : axb(ab), factors(0), sqr(1) {}
+			smooth_t(large_int ab = 1) : axb(ab), sqr(1) {}
 		};
 		struct poly_seed_t
 		{
 			double quality;
-			int index;
+			int a1;
+			int a2;
 		};
 		struct poly_t
 		{
@@ -72,9 +113,13 @@ namespace zn
 		{
 			large_int					 n;
 			std::vector<const prime_t *> base; 
-			size_t						 base_size; // size of the above
+			size_t						 base_size; // size of the above, -1 is not counted
 			std::vector<real_t>			 values;
 			std::vector<smooth_t>		 smooths;
+			std::vector<factors_t>		 factors;
+			int							 factors_index; // index of last smooth into factors
+														// after first attempt is no longer smooths.size()
+														// but restarts from 0
 #ifdef HAVE_LARGE_PRIME
 			std::map<small_int, smooth_t> large_primes;
 #endif
@@ -82,7 +127,9 @@ namespace zn
 			small_int					 m2;
 			small_int					 sqr2n; // sqrt(n * 2)
 			small_int					 sqrn; // sqrt(n)
-			info_t(size_t m = 10000, size_t bs = 32) : values(m * 2), m2(m * 2), base_size(bs - 1) {}
+			double						 sieve_offset;
+			double						 pquality;
+			info_t(int m = 10000, size_t bs = 32) : values(m * 2), m2(m * 2), base_size(bs - 1) {}
 		};
 		quadratic_sieve_cached_t(small_int primes = 256)
 		{
@@ -93,6 +140,10 @@ namespace zn
 			for (auto p : prime)
 				primes_.push_back(prime_t(p));
 		}
+		~quadratic_sieve_cached_t(void)
+		{
+			stats_.resume();
+		}
 		small_int factor(const large_int &n, info_t &info)
 		{
 			init_info(n, info);
@@ -101,6 +152,7 @@ namespace zn
 			});
 			for (const auto &poly_seed : info.poly)
 			{
+				stats_.polynomials();
 				poly_t poly = create_poly(info, poly_seed);
 				info.values.resize(poly.m * 2);
 				std::fill(info.values.begin(), info.values.end(), 0);
@@ -117,14 +169,29 @@ namespace zn
 		{
 			poly_t poly;
 
-			if (seed.index > 0)
+			if (seed.a1 > 0)
 			{
-				poly.a = info.base[seed.index]->value;
+				poly.a = seed.a1;
 				poly.a2 = poly.a * poly.a;
 				poly.b = quadratic_residue<small_int>(static_cast<small_int>(info.n % poly.a2), poly.a2, poly.a); // then take 'square root'...
+				if (seed.a2 > 1)
+				{
+					small_int p1 = seed.a2;
+					poly.a *= seed.a2;
+					small_int g = seed.a2 * seed.a2;
+					small_int r1 = quadratic_residue<small_int>(static_cast<small_int>(info.n % g), g, seed.a2); 
+
+					small_int db = (r1 - poly.b);
+					auto ext = extended_euclidean_algorithm(poly.a2, g);
+					small_int h = (std::get<1>(ext) * db) % g;
+					poly.b = poly.b + h * poly.a2;
+					poly.a2 *= g;
+					if (poly.b > poly.a2 / 2)
+						poly.b = poly.a2 - poly.b;
+				}
 				poly.c = (poly.b * poly.b - info.n) / poly.a2;
 				poly.m = 2 * (info.sqr2n / (2 * poly.a2)); // I want it even
-				poly.m = std::min(poly.m, info.m2);
+				poly.m = std::max(std::min(poly.m, info.m2), 2 * (info.m2 / 4));
 			}
 			else
 			{
@@ -132,7 +199,7 @@ namespace zn
 				poly.a2 = 1 ;
 				poly.b = 0;
 				poly.c = info.n;
-				poly.m = info.m2 * 2;
+				poly.m = info.m2 * 8;
 			}
 			poly.m2 = poly.m * 2;
 			return poly;
@@ -143,6 +210,8 @@ namespace zn
 			info.base.clear();
 			info.smooths.clear();
 			info.poly.clear();
+			info.factors.resize(info.base_size + 1);
+			std::fill(info.factors.begin(), info.factors.end(), 0);
 #ifdef HAVE_LARGE_PRIME
 			info.large_primes.clear();
 #endif
@@ -152,24 +221,45 @@ namespace zn
 			double a0 = sqrt(info.sqr2n / m);
 			auto it = primes_.begin();
 			auto end = primes_.end();
+			double k = 0.85;
 			for (; it != end; ++it)
 				if (it->residue[n % it->value]) // keep it!
 					if (info.base.size() < info.base_size)
 					{
 						info.base.push_back(&(*it));
-						double t = it->value / a0;
+						double t = k * it->value / a0;
 						double q = t + 1 / t;
-						if (q < 8)
+						if (q < info.pquality)
 						{
-							poly_seed_t poly{ q, static_cast<int>(info.base.size() - 1) };
+							poly_seed_t poly{ q, it->value, 1};
 							info.poly.push_back(poly);
 						}
 					}
 					else
 						break;
-		    poly_seed_t poly{20.0, -1 };
+#if 1 // fix quadratic residue of composire power in create_poly
+			size_t s = info.base.size() / 3;
+			for (size_t i = 1; i < s; i++)
+			{
+				small_int p = info.base[i]->value;
+				for (size_t j = 0; j < i; j++)
+				{
+					small_int q = info.base[j]->value;
+					auto pq = q * p; 
+					double t = k * pq / a0;
+					if (t > info.pquality)
+						break;
+					auto q1 = t + 1 / t + 1.0; // add a small penalty..
+					if (q1 < info.pquality)
+					{
+						poly_seed_t poly{ q1, p, q };
+						info.poly.push_back(poly);
+					}
+				}
+			}
+#endif
+			poly_seed_t poly{2 * info.pquality + 1, -1 }; // worse quality
 			info.poly.push_back(poly);
-		
 		}
 		void sieve(const poly_t &poly, info_t &info)
 		{
@@ -208,7 +298,13 @@ namespace zn
 					small_int a = poly.a % p->value;
 					if (a == 0)
 					{
-
+						small_int b1 = (2 * poly.b) % p->value;
+						if (b1 < 0)
+							b1 += p->value;
+						b1 = -(p->inverse[b1] * poly.c) % p->value ;
+						small_int index = (p->value + poly.m + b1) % p->value;
+						for (small_int i = index; i < poly.m2; i += p->value)
+							info.values[i] += p->logp; 
 					}
 					else if (p->value > 2)
 					{
@@ -241,34 +337,34 @@ namespace zn
 		}
 		void collect_smooth(info_t &info, poly_t &poly)
 		{
+			real_t logp = static_cast<real_t>((info.sieve_offset + std::log(info.sqr2n) / 2 + std::log(poly.m)) * log_unit_e);
 #ifdef HAVE_LARGE_PRIME
-			int large_prime = 0;
 			small_int thrsp = info.base[info.base_size-1]->value;
-			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 256) + std::log(poly.m) - std::log(thrsp) / 2) * log_unit_e);
-			thrsp = thrsp * static_cast<int>(sqrt(thrsp));
-#else
-			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 256) + std::log(poly.m)) * log_unit_e);
+			thrsp = thrsp * thrsp ;
+			logp -= static_cast<real_t>(std::log(thrsp) * log_unit_e);
 #endif
 			for (small_int i = 0; i < poly.m2; i++)
 				if (info.values[i] > logp)
 				{
 					large_int f = 0;
-					large_int x = i - poly.m ;
+					large_int x = i - poly.m;
 					if (poly.a == 1)
 					{
 						x += info.sqrn;
-						f = x * x - info.n ;
+						f = x * x - info.n;
 					}
 					else
 					{
 						large_int f1 = poly.a2 * x + 2 * poly.b; // evaluate polynomial
 						f = f1 * x + poly.c;
 					}
+					factors_t bit = 1;
+					bit <<= info.factors_index;
 					smooth_t smooth(poly.a2 * x + poly.b);
 					if (f < 0)
 					{
 						f = -f;
-						smooth.factors = 1;
+						info.factors[0] |= bit;
 					}
 					for (size_t k = 0; k < info.base_size; k++)
 					{
@@ -280,29 +376,40 @@ namespace zn
 							count++;
 						}
 						if (count & 1)
-							smooth.factors |= 1LL << (k + 1);
+							info.factors[k + 1] |= bit;
 						for (int j = 1; j < count; j += 2)
 							smooth.sqr *= p;
 					}
+					stats_.processed();
 					if (f == 1)
+					{
+						stats_.direct();
 						info.smooths.push_back(smooth);
+					}
 #ifdef HAVE_LARGE_PRIME
 					else if (f < thrsp)
 					{
+						stats_.large_primes();
 						small_int f1 = static_cast<small_int>(f);
 						auto it = info.large_primes.find(f1);
 						if (it == info.large_primes.end())
 							info.large_primes[f1] = smooth;
 						else
+						{
 							info.smooths.push_back(smooth); // ok, some extra processing is required
+							stats_.promoted();
+						}
 					}
 #endif
+					else
+						stats_.discarded();
 					if (info.smooths.size() > info.base_size + 2)
 						break ;
 					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
 				}
 		}
-		std::vector<prime_t> primes_;
+		stat_t					stats_;
+		std::vector<prime_t>	primes_;
 	};
 
 	struct test_info_t
@@ -314,6 +421,8 @@ namespace zn
 		int useed = 0;
 		int bound = 10000;
 		int base_size = 32;
+		double sieve_offset = 0;
+		double pquality = 5.0;
 	};
 	template <class large_int, class small_int>
 	class prime_tester_t
@@ -528,15 +637,18 @@ namespace zn
 				}
 			std::cout << "Examined = " << examined << ", factored = " << factored << "\n";
 		}
+		template <class stat>
 		static int quadratic_sieve(const std::vector<input_item_t> &items, large_int largest, const test_info_t &info)
 		{
 			int examined = 0;
 			int factored = 0;
 			std::cout << "Quadratic sieve\n";
-			quadratic_sieve_cached_t<long long> qs(128);
-			quadratic_sieve_cached_t<long long>::info_t qsinfo;
+			quadratic_sieve_cached_t<stat, long long> qs(128);
+			quadratic_sieve_cached_t<stat, long long>::info_t qsinfo;
 			qsinfo.base_size = info.base_size;
 			qsinfo.m2 = info.bound;
+			qsinfo.sieve_offset = info.sieve_offset;
+			qsinfo.pquality = info.pquality;
 			for (const auto &item : items)
 				if (!item.declared_prime)
 				{
@@ -548,7 +660,7 @@ namespace zn
 					if (info.count && examined >= info.count)
 						break;
 				}
-			std::cout << "Examined = " << examined << ", factored = " << factored << "\n";
+			std::cout << "\nExamined = " << examined << ", factored = " << factored << "\n";
 			return examined;
 		}
 		static void elliptic_curve_1(const std::vector<input_item_t> &items, int *seeds, const test_info_t &info)
@@ -610,7 +722,7 @@ namespace zn
 			std::cout << "Start processing: range = [" << smallest << ", " << largest << "]" << std::endl;
 			std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 			int seeds[] = { 2, 5, 19, 41, 67, 79 };
-			double examined = (info.count ? info.count : items.size());
+			double examined = static_cast<double>(info.count ? info.count : items.size());
 			switch (info.algo)
 			{
 			case 0:
@@ -633,7 +745,10 @@ namespace zn
 				elliptic_curve_1(items, seeds, info);
 				break;
 			case 6:
-				examined = quadratic_sieve(items, largest, info);
+				examined = quadratic_sieve<stats_t>(items, largest, info);
+				break;
+			case 61:
+				examined = quadratic_sieve<stats_none_t>(items, largest, info);
 				break;
 			}
 			auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
@@ -659,6 +774,10 @@ int main(int argc, char *argv[])
 			info.algo = atoi(argv[i] + 7);
 		else if (strncmp(argv[i], "--count=", 8) == 0)
 			info.count = atoi(argv[i] + 8);
+		else if (strncmp(argv[i], "--offset=", 9) == 0)
+			info.sieve_offset = atof(argv[i] + 9);
+		else if (strncmp(argv[i], "--pquality=", 11) == 0)
+			info.pquality = atof(argv[i] + 11);
 		else if (strncmp(argv[i], "--base-size=", 12) == 0)
 			info.base_size = atoi(argv[i] + 12);
 		else if (strcmp(argv[i], "--use-long") == 0)
