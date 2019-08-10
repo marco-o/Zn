@@ -124,6 +124,7 @@ namespace zn
 				poly.b = quadratic_residue<small_int>(static_cast<small_int>(info.n % poly.a2), poly.a2, poly.a); // then take 'square root'...
 				poly.c = (poly.b * poly.b - info.n) / poly.a2;
 				poly.m = 2 * (info.sqr2n / (2 * poly.a2)); // I want it even
+				poly.m = std::min(poly.m, info.m2);
 			}
 			else
 			{
@@ -131,7 +132,7 @@ namespace zn
 				poly.a2 = 1 ;
 				poly.b = 0;
 				poly.c = info.n;
-				poly.m = info.m2;
+				poly.m = info.m2 * 2;
 			}
 			poly.m2 = poly.m * 2;
 			return poly;
@@ -156,18 +157,19 @@ namespace zn
 					if (info.base.size() < info.base_size)
 					{
 						info.base.push_back(&(*it));
-						double t = 1.5 * it->value / a0;
+						double t = it->value / a0;
 						double q = t + 1 / t;
-						if (q < 4)
+						if (q < 8)
 						{
-							poly_seed_t poly{ q, it->value };
+							poly_seed_t poly{ q, static_cast<int>(info.base.size() - 1) };
 							info.poly.push_back(poly);
 						}
 					}
 					else
 						break;
-			poly_seed_t poly{20.0, -1 };
+		    poly_seed_t poly{20.0, -1 };
 			info.poly.push_back(poly);
+		
 		}
 		void sieve(const poly_t &poly, info_t &info)
 		{
@@ -178,12 +180,12 @@ namespace zn
 					small_int t = p->residue[info.n % p->value];
 					small_int r = 2 * p->value - ((info.sqrn - poly.m) % p->value) ;
 					small_int i0 = (r + t) % p->value;
-					if (p->value == 2)
-					{
+					if (p->value > 3)
+				/*	{
 						for (int i = i0; i < poly.m2 ; i += 2)
 							info.values[i] += p->logp;
 					}
-					else
+					else */
 					{
 						small_int i1 = (r - t) % p->value;
 						small_int index = std::min(i0, i1);
@@ -242,10 +244,10 @@ namespace zn
 #ifdef HAVE_LARGE_PRIME
 			int large_prime = 0;
 			small_int thrsp = info.base[info.base_size-1]->value;
-			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 64) + std::log(poly.m) - std::log(thrsp) / 2) * log_unit_e);
+			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 256) + std::log(poly.m) - std::log(thrsp) / 2) * log_unit_e);
 			thrsp = thrsp * static_cast<int>(sqrt(thrsp));
 #else
-			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 64) + std::log(poly.m)) * log_unit_e);
+			real_t logp = static_cast<real_t>((std::log(info.sqr2n / 256) + std::log(poly.m)) * log_unit_e);
 #endif
 			for (small_int i = 0; i < poly.m2; i++)
 				if (info.values[i] > logp)
@@ -295,6 +297,8 @@ namespace zn
 							info.smooths.push_back(smooth); // ok, some extra processing is required
 					}
 #endif
+					if (info.smooths.size() > info.base_size + 2)
+						break ;
 					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
 				}
 		}
