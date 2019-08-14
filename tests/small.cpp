@@ -14,7 +14,7 @@
 #include <numeric>
 #include <map>
 
-//#define HAVE_LARGE_PRIME
+#define HAVE_LARGE_PRIME
 //#define HAVE_MULTIPLIER_STATS
 
 namespace zn
@@ -66,6 +66,7 @@ namespace zn
 		size_t	base_size = 32;
 		double	sieve_offset = 0;
 		double	pquality = 5.0;
+		bool	more_polys = false;
 	};
 	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
 	template <class stat_t = stats_t, class large_int = long long, class small_int = int>
@@ -337,27 +338,30 @@ namespace zn
 					}
 					else
 						break;
-#if 0 // fix quadratic residue of composire power in create_poly
-			size_t s = info.base.size() / 3;
-			for (size_t i = 1; i < s; i++)
+
+			if (info.config.more_polys)
 			{
-				small_int p = info.base[i]->value;
-				for (size_t j = 0; j < i; j++)
+				size_t s = info.base.size() / 3;
+				for (size_t i = 1; i < s; i++)
 				{
-					small_int q = info.base[j]->value;
-					auto pq = q * p; 
-					double t = k * pq / a0;
-					if (t > info.pquality)
-						break;
-					auto q1 = t + 1 / t + 1.0; // add a small penalty..
-					if (q1 < info.pquality)
+					small_int p = info.base[i]->value;
+					for (size_t j = 0; j < i; j++)
 					{
-						poly_seed_t poly{ q1, p, q };
-						info.poly.push_back(poly);
+						small_int q = info.base[j]->value;
+						auto pq = q * p;
+						double t = k * pq / a0;
+						if (t > info.config.pquality)
+							break;
+						auto q1 = t + 1 / t + 1.0; // add a small penalty..
+						if (q1 < info.config.pquality)
+						{
+							poly_seed_t poly{ q1, p, q };
+							info.poly.push_back(poly);
+						}
 					}
 				}
 			}
-#endif
+
 			poly_seed_t poly{2 * info.config.pquality + 1, -1 }; // worse quality
 			info.poly.push_back(poly);
 		}
@@ -439,7 +443,7 @@ namespace zn
 		{
 			real_t logp = static_cast<real_t>((info.config.sieve_offset + std::log(info.sqr2n) / 2 + std::log(poly.m)) * log_unit_e);
 #ifdef HAVE_LARGE_PRIME
-			small_int thrsp = info.base[info.base_size-1]->value;
+			small_int thrsp = info.base[info.config.base_size-1]->value;
 			thrsp = thrsp * thrsp ;
 			logp -= static_cast<real_t>(std::log(thrsp) * log_unit_e);
 #endif
@@ -520,6 +524,35 @@ namespace zn
 #endif
 	};
 
+	template <class T>
+	T mul_mod(const T &x, const T &y, const T &m)
+	{
+		return (x * y) % m;
+	}
+
+	uint64_t mul_mod1(const uint64_t &x, const uint64_t &y, const uint64_t &m)
+	{
+		uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32)};
+		uint64_t y1[2] = { (uint32_t)y, (uint32_t)(y >> 32)};
+		uint64_t z0 = x1[0] * y1[0];
+		uint64_t z1 = x1[0] * y1[1] + x1[1] * y1[0] ;
+		uint64_t z00 = z0 + ((z1 & 0xFFFFFFFF) << 32); // overflow here?
+		uint16_t *z01 = (uint16_t *)&z00;
+		uint64_t z2 = x1[1] * y1[1] + (z1 >> 32) ;
+		if (z00 < z0) // overflow on z00!
+			z2++;
+		z2 = z2 % m;
+		z2 = ((z2 << 16) + z01[3]) % m;
+		z2 = ((z2 << 16) + z01[2]) % m;
+		z2 = ((z2 << 16) + z01[1]) % m;
+		z2 = ((z2 << 16) + z01[0]) % m;
+		return z2;
+	}
+
+	int64_t mul_mod(const int64_t &x, const int64_t &y, const int64_t &m)
+	{
+		return mul_mod1(x, y, m);
+	}
 	struct test_info_t
 	{
 		const char *file = nullptr;
@@ -560,6 +593,41 @@ namespace zn
 				} while (ist);
 
 			return item;
+		}
+		typedef boost::multiprecision::cpp_int cpp_int_t;
+		static bool fermat_test(const large_int &n)
+		{
+			large_int nm1 = n - 1;
+#ifdef HAVE_CHECK
+			large_int d = 8447990824LL;
+			d = mul_mod(d, d, n);
+			cpp_int_t n1 = n;
+			cpp_int_t d1 = 8447990824LL;
+			d1 = mul_mod(d1, d1, n1);
+			cpp_int_t q1 = q;
+			cpp_int_t x1 = 1;
+#endif
+			//
+			// Begin with a single Fermat test - it excludes a lot of candidates:
+			//
+			large_int q(228); // We know n is greater than this, as we've excluded small factors
+			large_int x = 1;
+			for (; nm1; nm1 >>= 1)
+			{
+				if (nm1 & 1)
+				{
+					x = mul_mod(q, x, n);
+#ifdef HAVE_CHECK
+					x1 = mul_mod(q1, x1, n1);
+#endif
+				}
+				q = mul_mod(q, q, n);
+#ifdef HAVE_CHECK
+				q1 = mul_mod(q1, q1, n1);
+				std::cout << "q = " << q << ", q1 = " << q1 << ", x = " << x << ", x1 = " << x << std::endl;
+#endif
+			}
+			return x == 1;
 		}
 
 		static bool custom_prime_test(const large_int &n, int *seeds, int count)
@@ -808,6 +876,24 @@ namespace zn
 			std::cout << "Examined = " << examined << ", errors = " << errors << "\n";
 			return examined;
 		}
+		static int fermat_prime_test(const std::vector<input_item_t> &items, int count)
+		{
+			int examined = 0;
+			int errors = 0;
+			for (const auto &item : items)
+			{
+				examined++;
+				if (examined % 1000 == 0)
+					std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
+				bool prime = fermat_test(item.n);
+				if (prime != item.declared_prime)
+					errors++;
+				if (count && examined >= count)
+					break;
+			}
+			std::cout << "FExamined = " << examined << ", errors = " << errors << "\n";
+			return examined;
+		}
 
 		static void process(const test_info_t &info)
 		{
@@ -853,6 +939,9 @@ namespace zn
 			case 61:
 				examined = quadratic_sieve<stats_none_t>(items, largest, info);
 				break;
+			case 7:
+				examined = fermat_prime_test(items, info.count);
+				break;
 			}
 			auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 			std::cout << "Average iteration time = " << elapsed / examined << "us\n";
@@ -883,6 +972,8 @@ int main(int argc, char *argv[])
 			info.config_qs.pquality = atof(argv[i] + 11);
 		else if (strncmp(argv[i], "--base-size=", 12) == 0)
 			info.config_qs.base_size = atoi(argv[i] + 12);
+		else if (strcmp(argv[i], "--more-polys") == 0)
+			info.config_qs.more_polys = true;
 		else if (strcmp(argv[i], "--use-long") == 0)
 			use_cppint = false;
 	if (info.file)
