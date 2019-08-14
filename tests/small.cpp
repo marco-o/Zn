@@ -15,7 +15,7 @@
 #include <map>
 
 //#define HAVE_LARGE_PRIME
-
+//#define HAVE_MULTIPLIER_STATS
 
 namespace zn
 {
@@ -60,6 +60,13 @@ namespace zn
 		void large_primes(void) {}
 		void resume(void) {}
 	};
+	struct config_qs_t
+	{
+		int		m2 = 1000 ;
+		size_t	base_size = 32;
+		double	sieve_offset = 0;
+		double	pquality = 5.0;
+	};
 	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
 	template <class stat_t = stats_t, class large_int = long long, class small_int = int>
 	class quadratic_sieve_cached_t
@@ -71,11 +78,13 @@ namespace zn
 		{
 			small_int value;
 			real_t	  logp;
+			float	  logf;
 			std::vector<small_int> inverse;
 			std::vector<small_int> residue; // quadratic residues
 			prime_t(small_int v = 2) : value(v), residue(v, 0), inverse(1, 0)
 			{
-				logp = static_cast<real_t>(std::log(v) * log_unit_e);
+				logf = static_cast<float>(std::log(v));
+				logp = static_cast<real_t>(logf * log_unit_e);
 				std::map<small_int, small_int> squares;
 				for (small_int i = 1; i < v; i++)
 				{
@@ -86,6 +95,67 @@ namespace zn
 				for (auto it : squares)
 					residue[it.first] = it.second;
 			}
+		};
+		class multiplier_t
+		{
+		public:
+			multiplier_t(int km) : logk_(2, 0.0f)
+			{
+				for (int i = 2; i < km; i++)
+					logk_.push_back(static_cast<float>(log(i)));
+				for (int i = 2; i * i < km; i++)
+					logk_[i*i] = 0;
+			}
+			template <class PrimeIt>
+			std::pair<int, float> find_best(const large_int &n, const std::pair<PrimeIt, PrimeIt> &range)
+			{
+				float q;
+				std::pair<int, float> result(3, quality(n, 3, range));
+				int ks = static_cast<int>(logk_.size());
+				for (int k = 5; k < ks; k += 2)
+					if ((logk_[k] > 0) && ((q = quality(n, k, range))) > result.second)
+						result = std::make_pair(k, q);
+				return result;
+			}
+			template <class PrimeIt>
+			float quality(const large_int &n, int k, const std::pair<PrimeIt, PrimeIt> &range)
+			{
+				large_int kn = k * n;
+				float fk = -logk_[k] / 2;
+				for (auto iter = range.first; iter != range.second ; ++iter)
+					if (iter->value == 2)
+					{
+						switch (safe_cast<int>(kn % 8))
+						{
+						case 1:
+							fk += 2 * iter->logp;
+							break;
+						case 2:
+						case 3:
+						case 6:
+						case 7:
+							fk += iter->logp / 2;
+							break;
+						case 5:
+							fk += iter->logp;
+							break;
+						default:
+							break;
+						}
+					}
+					else
+					{
+						small_int knp = static_cast<small_int>(kn % iter->value);
+						if (iter->residue[knp])
+							if (k % iter->value == 0)
+								fk += iter->logf / iter->value;
+							else
+								fk += 2 * iter->logf / (iter->value - 1);
+					}
+				return fk;
+			}
+		private:
+			std::vector<float> logk_;
 		};
 		typedef long long factors_t;
 		struct smooth_t
@@ -112,8 +182,8 @@ namespace zn
 		struct info_t
 		{
 			large_int					 n;
+			int							 multi; // multiplier, most times 1
 			std::vector<const prime_t *> base; 
-			size_t						 base_size; // size of the above, -1 is not counted
 			std::vector<real_t>			 values;
 			std::vector<smooth_t>		 smooths;
 			std::vector<factors_t>		 factors;
@@ -124,14 +194,11 @@ namespace zn
 			std::map<small_int, smooth_t> large_primes;
 #endif
 			std::vector<poly_seed_t>	 poly;
-			small_int					 m2;
 			small_int					 sqr2n; // sqrt(n * 2)
 			small_int					 sqrn; // sqrt(n)
-			double						 sieve_offset;
-			double						 pquality;
-			info_t(int m = 10000, size_t bs = 32) : values(m * 2), m2(m * 2), base_size(bs - 1) {}
+			config_qs_t					 config;
 		};
-		quadratic_sieve_cached_t(small_int primes = 256)
+		quadratic_sieve_cached_t(small_int primes = 256) : multiplier_(12)
 		{
 			small_int bound = static_cast<small_int>(primes * std::pow(std::log(primes), 1.3));
 			std::vector<small_int> prime = eratosthenes_sieve<small_int>(bound);
@@ -139,6 +206,10 @@ namespace zn
 				prime.erase(prime.begin() + primes, prime.end());
 			for (auto p : prime)
 				primes_.push_back(prime_t(p));
+			primes_range_ = std::make_pair(primes_.begin(), primes_.begin() + std::min<int>(10, primes_.size()));
+#ifdef HAVE_MULTIPLIER_STATS
+			mstats_.open("mstats.txt");
+#endif
 		}
 		~quadratic_sieve_cached_t(void)
 		{
@@ -146,10 +217,23 @@ namespace zn
 		}
 		small_int factor(const large_int &n, info_t &info)
 		{
-			init_info(n, info);
+			small_int result = factor_imp(n, info, false);
+			if (result == 1)
+				result = factor_imp(n, info, true);
+			if (result == 1)
+				std::cout << n << ": found " << info.smooths.size() << ", required = " << info.base.size() << std::endl;
+			return result;
+		}
+		small_int factor_imp(const large_int &n, info_t &info, bool with_multi = false)
+		{
+			small_int result = 1;
+			init_info(n, info, with_multi);
 			std::sort(info.poly.begin(), info.poly.end(), [](const poly_seed_t &lhs, const poly_seed_t &rhs) {
 				return lhs.quality < rhs.quality;
 			});
+#ifdef HAVE_MULTIPLIER_STATS
+			int poly_count = 0;
+#endif
 			for (const auto &poly_seed : info.poly)
 			{
 				stats_.polynomials();
@@ -157,12 +241,17 @@ namespace zn
 				info.values.resize(poly.m * 2);
 				std::fill(info.values.begin(), info.values.end(), 0);
 				sieve(poly, info);
-				collect_smooth(info, poly);
-				if (info.smooths.size() > info.base_size + 2)
-					return 2;
+				result = collect_smooth(info, poly);
+#ifdef HAVE_MULTIPLIER_STATS
+				poly_count++;
+#endif
+				if (result != 1)
+					break;
 			}
-			//			std::cout << "found " << count << ", required = " << info.base.size() << std::endl;
-			return 1;
+#ifdef HAVE_MULTIPLIER_STATS
+			mstats_ << multiplier_.quality(n, 1, primes_range_) << " " << poly_count << "\n" ;
+#endif
+			return result;
 		}
 	private:
 		poly_t create_poly(info_t &info, const poly_seed_t &seed)
@@ -191,7 +280,7 @@ namespace zn
 				}
 				poly.c = (poly.b * poly.b - info.n) / poly.a2;
 				poly.m = 2 * (info.sqr2n / (2 * poly.a2)); // I want it even
-				poly.m = std::max(std::min(poly.m, info.m2), 2 * (info.m2 / 4));
+				poly.m = std::max(std::min(poly.m, info.config.m2), 2 * (info.config.m2 / 4));
 			}
 			else
 			{
@@ -199,37 +288,48 @@ namespace zn
 				poly.a2 = 1 ;
 				poly.b = 0;
 				poly.c = info.n;
-				poly.m = info.m2 * 8;
+				poly.m = info.config.m2 * 4;
 			}
 			poly.m2 = poly.m * 2;
 			return poly;
 		}
-		void init_info(large_int n, info_t &info)
+		void init_info(large_int n, info_t &info, bool with_multi)
 		{
-			info.n = n;
+			info.n = n ;
+			if (with_multi)
+			{
+				auto multi = multiplier_.find_best(n, primes_range_);
+				info.n = n * multi.first;
+				info.multi = multi.first;
+			}
+			else
+			{
+				info.n = n;
+				info.multi = 1;
+			}
 			info.base.clear();
 			info.smooths.clear();
 			info.poly.clear();
-			info.factors.resize(info.base_size + 1);
+			info.factors.resize(info.config.base_size + 1);
 			std::fill(info.factors.begin(), info.factors.end(), 0);
 #ifdef HAVE_LARGE_PRIME
 			info.large_primes.clear();
 #endif
-			info.sqrn  = static_cast<small_int>(std::sqrt(n));
-			info.sqr2n = static_cast<small_int>(std::sqrt(n * 2));
-			small_int m = info.m2;
+			info.sqrn  = static_cast<small_int>(std::sqrt(info.n));
+			info.sqr2n = static_cast<small_int>(std::sqrt(info.n * 2));
+			small_int m = info.config.m2;
 			double a0 = sqrt(info.sqr2n / m);
 			auto it = primes_.begin();
 			auto end = primes_.end();
 			double k = 0.85;
 			for (; it != end; ++it)
-				if (it->residue[n % it->value]) // keep it!
-					if (info.base.size() < info.base_size)
+				if (it->residue[info.n % it->value]) // keep it!
+					if (info.base.size() < info.config.base_size)
 					{
 						info.base.push_back(&(*it));
 						double t = k * it->value / a0;
 						double q = t + 1 / t;
-						if (q < info.pquality)
+						if (q < info.config.pquality)
 						{
 							poly_seed_t poly{ q, it->value, 1};
 							info.poly.push_back(poly);
@@ -237,7 +337,7 @@ namespace zn
 					}
 					else
 						break;
-#if 1 // fix quadratic residue of composire power in create_poly
+#if 0 // fix quadratic residue of composire power in create_poly
 			size_t s = info.base.size() / 3;
 			for (size_t i = 1; i < s; i++)
 			{
@@ -258,7 +358,7 @@ namespace zn
 				}
 			}
 #endif
-			poly_seed_t poly{2 * info.pquality + 1, -1 }; // worse quality
+			poly_seed_t poly{2 * info.config.pquality + 1, -1 }; // worse quality
 			info.poly.push_back(poly);
 		}
 		void sieve(const poly_t &poly, info_t &info)
@@ -335,9 +435,9 @@ namespace zn
 					}
 				}
 		}
-		void collect_smooth(info_t &info, poly_t &poly)
+		small_int collect_smooth(info_t &info, poly_t &poly)
 		{
-			real_t logp = static_cast<real_t>((info.sieve_offset + std::log(info.sqr2n) / 2 + std::log(poly.m)) * log_unit_e);
+			real_t logp = static_cast<real_t>((info.config.sieve_offset + std::log(info.sqr2n) / 2 + std::log(poly.m)) * log_unit_e);
 #ifdef HAVE_LARGE_PRIME
 			small_int thrsp = info.base[info.base_size-1]->value;
 			thrsp = thrsp * thrsp ;
@@ -366,7 +466,7 @@ namespace zn
 						f = -f;
 						info.factors[0] |= bit;
 					}
-					for (size_t k = 0; k < info.base_size; k++)
+					for (size_t k = 0; k < info.config.base_size; k++)
 					{
 						int count = 0;
 						small_int p = info.base[k]->value;
@@ -403,13 +503,21 @@ namespace zn
 #endif
 					else
 						stats_.discarded();
-					if (info.smooths.size() > info.base_size + 2)
-						break ;
+					if (info.smooths.size() > info.config.base_size + 2)
+						return 2; ;
 					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
 				}
+			return 1;
 		}
+		typedef typename std::vector<prime_t>::iterator prime_it_t;
+		typedef std::pair<prime_it_t, prime_it_t> primes_range_t;
 		stat_t					stats_;
 		std::vector<prime_t>	primes_;
+		multiplier_t			multiplier_;
+		primes_range_t			primes_range_;
+#ifdef HAVE_MULTIPLIER_STATS
+		mutable std::ofstream	mstats_;
+#endif
 	};
 
 	struct test_info_t
@@ -420,9 +528,7 @@ namespace zn
 		int count = 0;
 		int useed = 0;
 		int bound = 10000;
-		int base_size = 32;
-		double sieve_offset = 0;
-		double pquality = 5.0;
+		config_qs_t config_qs;
 	};
 	template <class large_int, class small_int>
 	class prime_tester_t
@@ -645,10 +751,7 @@ namespace zn
 			std::cout << "Quadratic sieve\n";
 			quadratic_sieve_cached_t<stat, long long> qs(128);
 			quadratic_sieve_cached_t<stat, long long>::info_t qsinfo;
-			qsinfo.base_size = info.base_size;
-			qsinfo.m2 = info.bound;
-			qsinfo.sieve_offset = info.sieve_offset;
-			qsinfo.pquality = info.pquality;
+			qsinfo.config = info.config_qs;
 			for (const auto &item : items)
 				if (!item.declared_prime)
 				{
@@ -769,17 +872,17 @@ int main(int argc, char *argv[])
 		else if (strncmp(argv[i], "--useed=", 8) == 0)
 			info.useed = atoi(argv[i] + 8);
 		else if (strncmp(argv[i], "--bound=", 8) == 0)
-			info.bound = atoi(argv[i] + 8);
+			info.bound = info.config_qs.m2 = atoi(argv[i] + 8);
 		else if (strncmp(argv[i], "--algo=", 7) == 0)
 			info.algo = atoi(argv[i] + 7);
 		else if (strncmp(argv[i], "--count=", 8) == 0)
 			info.count = atoi(argv[i] + 8);
 		else if (strncmp(argv[i], "--offset=", 9) == 0)
-			info.sieve_offset = atof(argv[i] + 9);
+			info.config_qs.sieve_offset = atof(argv[i] + 9);
 		else if (strncmp(argv[i], "--pquality=", 11) == 0)
-			info.pquality = atof(argv[i] + 11);
+			info.config_qs.pquality = atof(argv[i] + 11);
 		else if (strncmp(argv[i], "--base-size=", 12) == 0)
-			info.base_size = atoi(argv[i] + 12);
+			info.config_qs.base_size = atoi(argv[i] + 12);
 		else if (strcmp(argv[i], "--use-long") == 0)
 			use_cppint = false;
 	if (info.file)

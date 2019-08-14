@@ -36,13 +36,13 @@ namespace zn
 	};
 
 	template <class large_int, class small_int>
-	int premultiplier(const large_int &n, const std::vector<small_int> &primes)
+	int premultiplier(const large_int &n, const std::vector<small_int> &primes, small_int largest_prime = 1000, int max_multi = 100)
 	{
 		int next_square_root = 2;
 		double max_value = 0;
 		int k_max = 3;
 		double clog2 = std::log(2);
-		for (int k = 3; k < 100; k++)
+		for (int k = k_max; k < max_multi; k++)
 		{
 			if (k == next_square_root * next_square_root)
 			{
@@ -80,7 +80,7 @@ namespace zn
 							fk += std::log(p) / p;
 						else
 							fk += 2 * std::log(p) / (p - 1);
-					if (p > 1000)
+					if (p > largest_prime)
 						break;
 				}
 			if (fk > max_value)
