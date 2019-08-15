@@ -164,7 +164,7 @@ namespace zn
 			large_int sqr; // product of prime with even exponents (/ 2)
 			large_int axb;// a *x + b, the number squared
 			factors_t factors;
-			smooth_t(large_int ab = 1) : axb(ab), sqr(1) {}
+			smooth_t(large_int ab = 1, large_int s = 1) : axb(ab), sqr(s), factors(0) {}
 		};
 		struct poly_seed_t
 		{
@@ -471,7 +471,7 @@ namespace zn
 					}
 					factors_t bit = 1;
 					bit <<= info.smooths.size();
-					smooth_t smooth(poly.a2 * x + poly.b);
+					smooth_t smooth(poly.a2 * x + poly.b, poly.a);
 					if (f < 0)
 					{
 						f = -f;
@@ -499,6 +499,9 @@ namespace zn
 					if (f == 1)
 					{
 						stats_.direct();
+#ifdef _DEBUG
+						smooth_invariant(info, smooth);
+#endif
 						info.smooths.push_back(smooth);
 					}
 #ifdef HAVE_LARGE_PRIME
@@ -541,11 +544,15 @@ namespace zn
 						const smooth_t &s1 = info.smooths[idx];
 						s.axb = mul_mod(s.axb, s1.axb, info.n);
 						s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
-						s.factors ^= s1.factors;
-						factors_t common = s.factors & s1.factors & m;
+						auto f1 = s1.factors & m;
+						s.factors ^= f1;
+						factors_t common = s.factors & f1;
 						for (int k = 0 ; common ; k++, common >>= 1)
 							if (common & 1)
 								s.sqr = mul_mod(s.sqr, info.factors[k].value, info.n);
+#ifdef _DEBUG
+						smooth_invariant(info, s);
+#endif
 					}
 				large_int n = info.n / info.multi;
 				large_int q = euclidean_algorithm(n, s.sqr + s.axb);
@@ -557,7 +564,18 @@ namespace zn
 			}
 			return 1;
 		}
-
+		void smooth_invariant(const info_t &info, const smooth_t &smooth) const
+		{
+			large_int q1 = mul_mod(smooth.axb, smooth.axb, info.n);
+			large_int q2 = mul_mod(smooth.sqr, smooth.sqr, info.n);
+			int index = 0;
+			for (auto mask = smooth.factors; mask; mask >>= 1, index++)
+				if (mask & 1)
+					q2 = mul_mod(q2, info.factors[index].value, info.n);
+			large_int r = (q1 - q2) % info.n;
+			if (r)
+				std::cout << "Hmmm\n";
+		}
 		small_int solve(info_t &info) const
 		{
 			small_int result = 1;
@@ -677,8 +695,12 @@ namespace zn
 		return z2;
 	}
 
-	int64_t mul_mod(const int64_t &x, const int64_t &y, const int64_t &m)
+	int64_t mul_mod(int64_t x, int64_t y, const int64_t &m)
 	{
+		if (x < 0)
+			x += m;
+		if (y < 0)
+			y += m;
 		return mul_mod1(x, y, m);
 	}
 	struct test_info_t
