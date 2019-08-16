@@ -195,7 +195,6 @@ namespace zn
 			std::vector<real_t>			 values;
 			std::vector<smooth_t>		 smooths;
 			std::vector<factor_info_t>	 factors;
-			std::vector<int>			 smooth_index;
 #ifdef HAVE_LARGE_PRIME
 			std::map<small_int, smooth_t> large_primes;
 #endif
@@ -527,32 +526,33 @@ namespace zn
 				}
 			return 1;
 		}
-		small_int build_result(info_t &info, int sindex) const
+		small_int build_result(info_t &info, int start_index) const
 		{
 			int sall = info.smooths.size();
-			int size = info.smooth_index.size();
-			factors_t m = (static_cast<factors_t>(1) << info.factors.size()) - 1;
-			for (int i = sindex; i < sall; i++)
+			int size = static_cast<int>(info.factors.size());
+			for (int i = start_index; i < sall; i++)
 			{
-				factors_t f = 1;
+				factors_t f = static_cast<factors_t>(1) << i;
 				smooth_t s = info.smooths[i]; // should pick up its list of factors
-				f <<= i;
-				for (int j = 0  ;j < size ; j++)
-					if (info.factors[j].mask & f)
+				int sindex = 0;
+				for (int j = 0 ;j < size ; j++)
+					if (info.factors[j].mask)
 					{
-						int idx = info.smooth_index[j];
-						const smooth_t &s1 = info.smooths[idx];
-						s.axb = mul_mod(s.axb, s1.axb, info.n);
-						s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
-						auto f1 = s1.factors & m;
-						s.factors ^= f1;
-						factors_t common = s.factors & f1;
-						for (int k = 0 ; common ; k++, common >>= 1)
-							if (common & 1)
-								s.sqr = mul_mod(s.sqr, info.factors[k].value, info.n);
+						if (info.factors[j].mask & f)
+						{
+							const smooth_t &s1 = info.smooths[sindex];
+							s.axb = mul_mod(s.axb, s1.axb, info.n);
+							s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
+							factors_t common = s.factors & s1.factors;
+							s.factors ^= s1.factors;
+							for (int k = 0; common; k++, common >>= 1)
+								if (common & 1)
+									s.sqr = mul_mod(s.sqr, info.factors[k].value, info.n);
 #ifdef _DEBUG
-						smooth_invariant(info, s);
+							smooth_invariant(info, s);
 #endif
+						}
+						sindex++;
 					}
 				large_int n = info.n / info.multi;
 				large_int q = euclidean_algorithm(n, s.sqr + s.axb);
@@ -580,74 +580,42 @@ namespace zn
 		{
 			small_int result = 1;
 			int smooths_size = static_cast<int>(info.smooths.size());
-			info.smooth_index.clear();
-			auto fit = info.factors.begin();
-			auto fend = info.factors.end();
-			for (auto fir = fit; fir != fend; fir++)
-				if (fir->mask)
-				{
-					if (fir != fit)
-						*fit = *fir;
-					fit++;
-				}
-			info.factors.erase(fit, fend);
 			int base_size = static_cast<int>(info.factors.size());
-			int i = 0; // pointer to smooth
-			for (; static_cast<int>(info.smooth_index.size()) < base_size; i++)
-			{
-				factors_t bit = 1;
-				bit <<= info.smooth_index.size();
-				int j = i ; // vertical pivoting, in case swap factors
-				for (; j < base_size; j++)
-					if (info.factors[j].mask & bit)
-					{
-						if (j > i)
-							std::swap(info.factors[i], info.factors[j]);
-						break;
-					}
-				
-				if (j == base_size) // horizontal pivoting, swap smooths
+			int i = 0; // pointer to factors
+			int j = 0; // pointer to smooths
+			for  ( ; i < base_size ; i++)
+				if (info.factors[i].mask)
 				{
-					for (j = i; j < base_size; j++)
-						if (info.factors[j].mask)
-							break;
-					if (j > i) // remove factors 'disappeared' in the mean time
+					factors_t bit = static_cast<factors_t>(1) << j ;
+					factors_t f = info.factors[i].mask;
+					if ((f & bit) == 0)
 					{
-						info.factors.erase(info.factors.begin() + i, info.factors.begin() + j);
-						base_size = static_cast<int>(info.factors.size());
-					}
-					if (i < base_size)
-					{
-						factors_t f = info.factors[i].mask;
-						int rem = base_size - i;
-						for (j = 0; j < rem; j++)
-							if (f & (bit << j))
-							{
-								j += i;
+						int rem = smooths_size - j;
+						int k = 1; //  k == 0 fails always
+						for ( ; k < rem; k++)
+							if (f & (bit << k))
 								break;
-							}
-						swap_smooths(info, i, j);
+						swap_smooths(info, j, j + k);
+						f = info.factors[i].mask; // now swapped
 					}
+					// Gaussian elimination step
+					for (int k = i + 1; k < base_size; k++)
+						if (info.factors[k].mask & bit)
+							info.factors[k].mask ^= f;
+					j++;
 				}
-				if (i >= base_size)
-					break;
-				info.smooth_index.push_back(i);
-				factors_t f = info.factors[i].mask;
-				// Gaussian elimination step
-				for (int k = i + 1; k < base_size; k++)
-					if (info.factors[k].mask & bit)
-						info.factors[k].mask ^= f;
-			}
-			for (int k = base_size - 1; k >= 0; k--)
-			{
-				factors_t bit = 1;
-				bit <<= k;
-				factors_t f = info.factors[k].mask;
-				for (int j = 0; j < k; j++)
-					if (info.factors[j].mask & bit)
-						info.factors[j].mask ^= f;
-			}
-			return build_result(info, i);
+			int j0 = j;
+			for (--i, --j ;i >= 0 ; i--)
+				if (info.factors[i].mask)
+				{
+					factors_t bit = static_cast<factors_t>(1) << j;
+					factors_t f = info.factors[i].mask;
+					for (int h = 0; h < i; h++)
+						if (info.factors[h].mask & bit)
+							info.factors[h].mask ^= f;
+					j--;
+				}
+			return build_result(info, j0);
 		}
 		void swap_smooths(info_t &info, int i, int j) const // assume j > i
 		{
