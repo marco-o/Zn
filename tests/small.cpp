@@ -16,6 +16,13 @@
 
 //#define HAVE_LARGE_PRIME
 //#define HAVE_MULTIPLIER_STATS
+template <class stream_t>
+stream_t &operator<<(stream_t &stream, const std::vector<int> &v)
+{
+	for (auto x : v)
+		stream << x << " ";
+	return stream;
+}
 
 namespace zn
 {
@@ -25,6 +32,7 @@ namespace zn
 		void processed(void) { processed_++; }
 		void direct(void) { direct_++; }
 		void discarded(void) { discarded_++; }
+		void attempts(void) { attempts_++; }
 		void promoted(void) { promoted_++; }
 		void polynomials(void) { polynomials_++; }
 		void large_primes(void) { large_primes_++; }
@@ -32,6 +40,7 @@ namespace zn
 		{
 			std::cout << "Processed = " << processed_ << "\n"
 				      << "Discarded = " << discarded_ << "\n"
+					  << "Attempts = " << attempts_ << "\n"
 #ifdef HAVE_LARGE_PRIME
 					  << "Direct = " << direct_ << "\n"
 					  << "Large = " << large_primes_ << "\n"
@@ -47,6 +56,7 @@ namespace zn
 		int discarded_ = 0; // smooth detection failures
 		int large_primes_ = 0;
 		int direct_ = 0;
+		int attempts_ = 0;
 		int polynomials_ = 0;
 	};
 	struct stats_none_t
@@ -56,6 +66,7 @@ namespace zn
 		void direct(void) {}
 		void discarded(void) {}
 		void promoted(void) {}
+		void attempts(void) { }
 		void polynomials(void) {}
 		void large_primes(void) {}
 		void resume(void) {}
@@ -195,6 +206,8 @@ namespace zn
 			std::vector<real_t>			 values;
 			std::vector<smooth_t>		 smooths;
 			std::vector<factor_info_t>	 factors;
+			std::vector<int>			 smooth_perm;
+			std::vector<int>			 smooth_index;
 #ifdef HAVE_LARGE_PRIME
 			std::map<small_int, smooth_t> large_primes;
 #endif
@@ -202,6 +215,7 @@ namespace zn
 			small_int					 sqr2n; // sqrt(n * 2)
 			small_int					 sqrn; // sqrt(n)
 			config_qs_t					 config;
+			factors_t perm_bit(int j) const { return static_cast<factors_t>(1) << smooth_perm[j]; }
 		};
 		quadratic_sieve_cached_t(small_int primes = 256) : multiplier_(12)
 		{
@@ -225,8 +239,10 @@ namespace zn
 			small_int result = factor_imp(n, info, false);
 			if (result == 1)
 				result = factor_imp(n, info, true);
+#ifdef _DEBUG
 			if (result == 1)
 				std::cout << n << ": found " << info.smooths.size() << ", required = " << info.base.size() << std::endl;
+#endif
 			return result;
 		}
 		small_int factor_imp(const large_int &n, info_t &info, bool with_multi = false) const
@@ -491,6 +507,8 @@ namespace zn
 							info.factors[k + 1].mask |= bit;
 							smooth.factors |= static_cast<factors_t>(1) << (k + 1);
 						}
+						else
+							info.factors[k + 1].mask &= ~bit;
 						for (int j = 1; j < count; j += 2)
 							smooth.sqr *= p;
 					}
@@ -520,7 +538,7 @@ namespace zn
 #endif
 					else
 						stats_.discarded();
-					if (info.smooths.size() > info.config.base_size + 2)
+					if (info.smooths.size() > info.config.base_size + 4)
 						return solve(info);
 					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
 				}
@@ -532,28 +550,26 @@ namespace zn
 			int size = static_cast<int>(info.factors.size());
 			for (int i = start_index; i < sall; i++)
 			{
-				factors_t f = static_cast<factors_t>(1) << i;
-				smooth_t s = info.smooths[i]; // should pick up its list of factors
-				int sindex = 0;
-				for (int j = 0 ;j < size ; j++)
-					if (info.factors[j].mask)
+				factors_t f = info.perm_bit(i);
+				int ip = info.smooth_perm[i];
+				smooth_t s = info.smooths[ip]; // should pick up its list of factors
+				for (int j = 0; j < size; j++)
+					if (info.factors[j].mask & f)
 					{
-						if (info.factors[j].mask & f)
-						{
-							const smooth_t &s1 = info.smooths[sindex];
-							s.axb = mul_mod(s.axb, s1.axb, info.n);
-							s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
-							factors_t common = s.factors & s1.factors;
-							s.factors ^= s1.factors;
-							for (int k = 0; common; k++, common >>= 1)
-								if (common & 1)
-									s.sqr = mul_mod(s.sqr, info.factors[k].value, info.n);
+						int sindex = info.smooth_index[j];
+						const smooth_t &s1 = info.smooths[sindex];
+						s.axb = mul_mod(s.axb, s1.axb, info.n);
+						s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
+						factors_t common = s.factors & s1.factors;
+						s.factors ^= s1.factors;
+						for (int k = 0; common; k++, common >>= 1)
+							if (common & 1)
+								s.sqr = mul_mod(s.sqr, info.factors[k].value, info.n);
 #ifdef _DEBUG
-							smooth_invariant(info, s);
+						smooth_invariant(info, s);
 #endif
-						}
-						sindex++;
 					}
+				stats_.attempts();
 				large_int n = info.n / info.multi;
 				large_int q = euclidean_algorithm(n, s.sqr + s.axb);
 				if (q != 1 && q != n)
@@ -563,6 +579,19 @@ namespace zn
 					return static_cast<small_int>(q);
 			}
 			return 1;
+		}
+		void print(const info_t &info) const {}
+		void print1(const info_t &info) const
+		{
+			std::cout << info.smooth_perm << "\n" << info.smooth_index << std::endl;
+			int sall = info.smooths.size();
+			int size = static_cast<int>(info.factors.size());
+			for (int i = 0; i < size; i++)
+			{
+				factors_t f = info.factors[i].mask;
+				for (int j = 0; j < sall; j++)
+					std::cout << (((f & (1LL << j))) ? '1' : '0') << (j < sall - 1 ? " " : "\n");
+			}
 		}
 		void smooth_invariant(const info_t &info, const smooth_t &smooth) const
 		{
@@ -581,51 +610,47 @@ namespace zn
 			small_int result = 1;
 			int smooths_size = static_cast<int>(info.smooths.size());
 			int base_size = static_cast<int>(info.factors.size());
+			info.smooth_perm.resize(smooths_size);
+			info.smooth_index.clear();
+			for (int k = 0; k < smooths_size; k++)
+				info.smooth_perm[k] = k;
 			int i = 0; // pointer to factors
 			int j = 0; // pointer to smooths
-			for  ( ; i < base_size ; i++)
-				if (info.factors[i].mask)
+			factors_t f, bit;
+			print(info);
+			for (; i < base_size; i++)
+				if ((f = info.factors[i].mask) != 0)
 				{
-					factors_t bit = static_cast<factors_t>(1) << j ;
-					factors_t f = info.factors[i].mask;
-					if ((f & bit) == 0)
-					{
-						int rem = smooths_size - j;
-						int k = 1; //  k == 0 fails always
-						for ( ; k < rem; k++)
-							if (f & (bit << k))
+					if ((f & (bit = info.perm_bit(j))) == 0)
+						for (int k = j + 1; k < smooths_size; k++)
+							if (f & (bit = info.perm_bit(k)))
+							{
+								std::swap(info.smooth_perm[j], info.smooth_perm[k]);
 								break;
-						swap_smooths(info, j, j + k);
-						f = info.factors[i].mask; // now swapped
-					}
+							}
 					// Gaussian elimination step
 					for (int k = i + 1; k < base_size; k++)
 						if (info.factors[k].mask & bit)
 							info.factors[k].mask ^= f;
+					info.smooth_index.push_back(info.smooth_perm[j]);
 					j++;
+					print(info);
 				}
+				else
+					info.smooth_index.push_back(info.smooth_perm[j]);
+
 			int j0 = j;
 			for (--i, --j ;i >= 0 ; i--)
-				if (info.factors[i].mask)
+				if ((f = info.factors[i].mask) != 0)
 				{
-					factors_t bit = static_cast<factors_t>(1) << j;
-					factors_t f = info.factors[i].mask;
+					factors_t bit = info.perm_bit(j);
 					for (int h = 0; h < i; h++)
 						if (info.factors[h].mask & bit)
 							info.factors[h].mask ^= f;
 					j--;
+					print(info);
 				}
 			return build_result(info, j0);
-		}
-		void swap_smooths(info_t &info, int i, int j) const // assume j > i
-		{
-			int delta = j - i;
-			factors_t mi = static_cast<factors_t>(1) << i;
-			factors_t mj = static_cast<factors_t>(1) << j;
-			std::swap(info.smooths[i], info.smooths[j]);
-			factors_t m = ~(mi | mj);
-			for (auto &f : info.factors)
-				f.mask = (f.mask & m) | ((f.mask & mi) << delta) | ((f.mask & mj) >> delta);
 		}
 		typedef typename std::vector<prime_t>::iterator prime_it_t;
 		typedef std::pair<prime_it_t, prime_it_t> primes_range_t;
