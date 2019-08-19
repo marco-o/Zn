@@ -76,7 +76,8 @@ namespace zn
 		int		m2 = 1000 ;
 		size_t	base_size = 32;
 		double	sieve_offset = 0;
-		double	pquality = 5.0;
+		double	pquality = 5.0; // to select primes for 'a' coefficient
+		int		smooth_excess = 4; // number of smooths to find
 		bool	more_polys = false;
 	};
 	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
@@ -205,9 +206,11 @@ namespace zn
 			std::vector<const prime_t *> base; 
 			std::vector<real_t>			 values;
 			std::vector<smooth_t>		 smooths;
+			std::vector<smooth_t>		 smooths_tmp;
 			std::vector<factor_info_t>	 factors;
 			std::vector<int>			 smooth_perm;
 			std::vector<int>			 smooth_index;
+			int							 smooth_required;
 #ifdef HAVE_LARGE_PRIME
 			std::map<small_int, smooth_t> large_primes;
 #endif
@@ -360,7 +363,7 @@ namespace zn
 			info.factors.push_back(factor_info_t(-1));
 			for (auto it : info.base)
 				info.factors.push_back(it->value);
-
+			info.smooth_required = info.config.base_size + info.config.smooth_excess;
 			if (info.config.more_polys)
 			{
 				size_t s = info.base.size() / 3;
@@ -538,8 +541,12 @@ namespace zn
 #endif
 					else
 						stats_.discarded();
-					if (info.smooths.size() > info.config.base_size + 4)
-						return solve(info);
+					if (info.smooths.size() >= static_cast<size_t>(info.smooth_required))
+					{
+						small_int result = solve(info);
+						if (result != 1) // collect some more relations
+							return result;
+					}
 					//std::cout << i << ": value = " << static_cast<int>(info.values[i]) << " f = " << f << std::endl;
 				}
 			return 1;
@@ -564,7 +571,7 @@ namespace zn
 						s.factors ^= s1.factors;
 						for (int k = 0; common; k++, common >>= 1)
 							if (common & 1)
-								s.sqr = mul_mod(s.sqr, info.factors[k].value, info.n);
+								s.sqr = mul_mod<large_int>(s.sqr, info.factors[k].value, info.n);
 #ifdef _DEBUG
 						smooth_invariant(info, s);
 #endif
@@ -578,6 +585,22 @@ namespace zn
 				if (q != 1 && q != n)
 					return static_cast<small_int>(q);
 			}
+			// some kind of backtracking: reuse first start_index smooth 
+			// and set factors bitmask accordingly
+			for (int i = 0; i < size; i++)
+				info.factors[i].mask = 0;
+			info.smooths_tmp.clear() ;
+			for (int i = 0; i < start_index; i++)
+			{
+				auto &f = info.smooths[info.smooth_index[i]];
+				info.smooths_tmp.push_back(f);
+				factors_t bit = static_cast<factors_t>(1) << i;
+				auto m = f.factors;
+				for (int j = 0; m; j++, m >>= 1)
+					if (m & 1)
+						info.factors[j].mask |= bit;
+			}
+			info.smooths = info.smooths_tmp;
 			return 1;
 		}
 		void print(const info_t &info) const {}
@@ -663,39 +686,77 @@ namespace zn
 #endif
 	};
 
+
+	template <class T>
+	struct mul_t
+	{
+		static T mod(const T &x, const T &y, const T &m)
+		{
+			return (x * y) % m;
+		}
+	};
+
 	template <class T>
 	T mul_mod(const T &x, const T &y, const T &m)
 	{
-		return (x * y) % m;
+		return mul_t<T>::mod(x, y, m);
 	}
 
-	uint64_t mul_mod1(const uint64_t &x, const uint64_t &y, const uint64_t &m)
+	template <>
+	struct mul_t<uint64_t>
 	{
-		uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32)};
-		uint64_t y1[2] = { (uint32_t)y, (uint32_t)(y >> 32)};
-		uint64_t z0 = x1[0] * y1[0];
-		uint64_t z1 = x1[0] * y1[1] + x1[1] * y1[0] ;
-		uint64_t z00 = z0 + ((z1 & 0xFFFFFFFF) << 32); // overflow here?
-		uint16_t *z01 = (uint16_t *)&z00;
-		uint64_t z2 = x1[1] * y1[1] + (z1 >> 32) ;
-		if (z00 < z0) // overflow on z00!
-			z2++;
-		z2 = z2 % m;
-		z2 = ((z2 << 16) + z01[3]) % m;
-		z2 = ((z2 << 16) + z01[2]) % m;
-		z2 = ((z2 << 16) + z01[1]) % m;
-		z2 = ((z2 << 16) + z01[0]) % m;
-		return z2;
+		static uint64_t mod(const uint64_t &x, const uint64_t &y, const uint64_t &m)
+		{
+			uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32)};
+			uint64_t y1[2] = { (uint32_t)y, (uint32_t)(y >> 32)};
+			if (x1[1] == 0 && y1[1] == 0)
+				return x1[0] * y1[0] % m;
+			uint64_t z0 = x1[0] * y1[0];
+			uint64_t z1 = x1[0] * y1[1] + x1[1] * y1[0] ;
+			uint64_t z00 = z0 + ((z1 & 0xFFFFFFFF) << 32); // overflow here?
+			uint16_t *z01 = (uint16_t *)&z00;
+			uint64_t z2 = x1[1] * y1[1] + (z1 >> 32) ;
+			if (z00 < z0) // overflow on z00!
+				z2++;
+			z2 = z2 % m;
+			z2 = ((z2 << 16) + z01[3]) % m;
+			z2 = ((z2 << 16) + z01[2]) % m;
+			z2 = ((z2 << 16) + z01[1]) % m;
+			z2 = ((z2 << 16) + z01[0]) % m;
+			return z2;
+		}
+	};
+
+	template <>
+	struct mul_t<int64_t>
+	{
+		static int64_t mod(const int64_t &x, const int64_t &y, const int64_t &m)
+		{
+			if (x >= 0)
+				if (y >= 0)
+					return mul_t<uint64_t>::mod(x, y, m);
+				else
+					return -static_cast<int64_t>(mul_t<uint64_t>::mod(x, -y, m));
+			else
+				if (y >= 0)
+					return -static_cast<int64_t>(mul_t<uint64_t>::mod(-x, y, m));
+				else
+					return mul_t<uint64_t>::mod(-x, -y, m);
+		}
+	};	
+	uint64_t mul_modu2(const uint64_t &x, const uint32_t &y, const uint64_t &m)
+	{
+		uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32) };
+		uint64_t z0 = x1[0] * y;
+		uint64_t z1 = x1[1] * y;
+		uint64_t z10 = z1 + (z0 >> 32);
+		uint32_t z01 = static_cast<uint32_t>(z0);
+		z10 = z10 % m;
+		z10 = ((z10 << 16) + (z01 >> 16)) % m;
+		z10 = ((z10 << 16) + (z01 & 0xFFFF)) % m;
+		return z10;
 	}
 
-	int64_t mul_mod(int64_t x, int64_t y, const int64_t &m)
-	{
-		if (x < 0)
-			x += m;
-		if (y < 0)
-			y += m;
-		return mul_mod1(x, y, m);
-	}
 	struct test_info_t
 	{
 		const char *file = nullptr;
