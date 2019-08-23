@@ -36,6 +36,12 @@ namespace zn
 		void promoted(void) { promoted_++; }
 		void polynomials(void) { polynomials_++; }
 		void large_primes(void) { large_primes_++; }
+		template <class large_int, class small_int>
+		void report(const large_int & n, const small_int &p)
+		{
+			if (p == 1)
+				std::cout << "\t" << n << std::endl;
+		}
 		void resume(void)
 		{
 			std::cout << "Processed = " << processed_ << "\n"
@@ -69,8 +75,20 @@ namespace zn
 		void attempts(void) { }
 		void polynomials(void) {}
 		void large_primes(void) {}
+		template <class large_int, class small_int>
+		void report(const large_int &, const small_int &) {}
 		void resume(void) {}
 	};
+	struct interpolator_t 
+	{
+		float a;
+		float b;
+	};
+	int interpolate(const interpolator_t &interp, int bits)
+	{
+		return static_cast<int>(interp.a + bits * interp.b);
+	}
+
 	struct config_qs_t
 	{
 		int		m2 = 1000 ;
@@ -79,6 +97,8 @@ namespace zn
 		double	pquality = 5.0; // to select primes for 'a' coefficient
 		int		smooth_excess = 4; // number of smooths to find
 		bool	more_polys = false;
+		interpolator_t base_int = { 30.0f, 0.1f };// actual baseof n is a + b * bitcount(n)
+		interpolator_t m2_int = { 600.0f, 10.0f };
 	};
 	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
 	template <class stat_t = stats_t, class large_int = long long, class small_int = int>
@@ -242,15 +262,15 @@ namespace zn
 			small_int result = factor_imp(n, info, false);
 			if (result == 1)
 				result = factor_imp(n, info, true);
-#ifdef _DEBUG
-			if (result == 1)
-				std::cout << n << ": found " << info.smooths.size() << ", required = " << info.base.size() << std::endl;
-#endif
+			stats_.report(n, result);
 			return result;
 		}
 		small_int factor_imp(const large_int &n, info_t &info, bool with_multi = false) const
 		{
 			small_int result = 1;
+			large_int n1 = static_cast<large_int>(sqrt(n + 0.5));
+			if (n1 * n1 == n)
+				return static_cast<small_int>(n1); // a perfect square: case handled here because below is a problem
 			init_info(n, info, with_multi);
 			std::sort(info.poly.begin(), info.poly.end(), [](const poly_seed_t &lhs, const poly_seed_t &rhs) {
 				return lhs.quality < rhs.quality;
@@ -331,6 +351,9 @@ namespace zn
 				info.n = n;
 				info.multi = 1;
 			}
+			int bits = bitcount(info.n);
+			info.config.base_size = interpolate(info.config.base_int, bits);
+			info.config.m2 = interpolate(info.config.m2_int, bits);
 			info.base.clear();
 			info.smooths.clear();
 			info.poly.clear();
@@ -581,9 +604,11 @@ namespace zn
 				large_int q = euclidean_algorithm(n, s.sqr + s.axb);
 				if (q != 1 && q != n)
 					return static_cast<small_int>(q);
+#if 0
 				q = euclidean_algorithm(n, abs(s.sqr - s.axb));
 				if (q != 1 && q != n)
 					return static_cast<small_int>(q);
+#endif
 			}
 			// some kind of backtracking: reuse first start_index smooth 
 			// and set factors bitmask accordingly
@@ -623,7 +648,7 @@ namespace zn
 			int index = 0;
 			for (auto mask = smooth.factors; mask; mask >>= 1, index++)
 				if (mask & 1)
-					q2 = mul_mod(q2, info.factors[index].value, info.n);
+					q2 = mul_mod<large_int>(q2, info.factors[index].value, info.n);
 			large_int r = (q1 - q2) % info.n;
 			if (r)
 				std::cout << "Hmmm\n";
@@ -686,6 +711,34 @@ namespace zn
 #endif
 	};
 
+	template <class T>
+	int bitcount(const T &t)
+	{
+		return 0;
+	}
+	const uint8_t bitcount_table[] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
+	int bitcount(const uint8_t &t)
+	{
+		return bitcount_table[t & 0x0F] + bitcount_table[t >> 4];
+	}
+
+	int bitcount(const uint16_t &t)
+	{
+		const uint8_t *t1 = reinterpret_cast<const uint8_t *>(&t);
+		return bitcount(t1[0]) + bitcount(t1[1]);
+	}
+
+	int bitcount(const uint32_t &t)
+	{
+		const uint16_t *t1 = reinterpret_cast<const uint16_t *>(&t);
+		return bitcount(t1[0]) + bitcount(t1[1]);
+	}
+
+	int bitcount(const long long &t)
+	{
+		const uint32_t *t1 = reinterpret_cast<const uint32_t *>(&t);
+		return bitcount(t1[0]) + bitcount(t1[1]);
+	}
 
 	template <class T>
 	struct mul_t
@@ -756,6 +809,38 @@ namespace zn
 		z10 = ((z10 << 16) + (z01 & 0xFFFF)) % m;
 		return z10;
 	}
+
+
+	uint64_t mul_modu(const uint64_t &x, const uint64_t &y, const uint64_t &m)
+	{
+		uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32) };
+		uint64_t y1[2] = { (uint32_t)y, (uint32_t)(y >> 32) };
+		if (x1[1] == 0 && y1[1] == 0)
+			return x1[0] * y1[0] % m;
+		uint64_t z0 = x1[0] * y1[0];
+		uint64_t z1 = x1[0] * y1[1] + x1[1] * y1[0];
+		uint64_t z00 = z0 + ((z1 & 0xFFFFFFFF) << 32); // overflow here?
+		uint16_t *z01 = (uint16_t *)&z00;
+		uint64_t z2 = x1[1] * y1[1] + (z1 >> 32);
+		if (z00 < z0) // overflow on z00!
+			z2++;
+		z2 = z2 % m;
+		z2 = ((z2 << 16) + z01[3]) % m;
+		z2 = ((z2 << 16) + z01[2]) % m;
+		z2 = ((z2 << 16) + z01[1]) % m;
+		z2 = ((z2 << 16) + z01[0]) % m;
+		return z2;
+	}
+	/*
+	int64_t mul_mod(int64_t x, int64_t y, const int64_t &m)
+	{
+		if (x < 0)
+			x += m;
+		if (y < 0)
+			y += m;
+		return mul_modu(x, y, m);
+	}
+	*/
 
 	struct test_info_t
 	{
@@ -1170,8 +1255,18 @@ int main(int argc, char *argv[])
 			info.algo = atoi(argv[i] + 7);
 		else if (strncmp(argv[i], "--count=", 8) == 0)
 			info.count = atoi(argv[i] + 8);
+		else if (strncmp(argv[i], "--base.a=", 9) == 0)
+			info.config_qs.base_int.a = static_cast<float>(atof(argv[i] + 9));
+		else if (strncmp(argv[i], "--base.b=", 9) == 0)
+			info.config_qs.base_int.b = static_cast<float>(atof(argv[i] + 9));
+		else if (strncmp(argv[i], "--m2.a=", 7) == 0)
+			info.config_qs.m2_int.a = static_cast<float>(atof(argv[i] + 7));
+		else if (strncmp(argv[i], "--m2.b=", 7) == 0)
+			info.config_qs.m2_int.b = static_cast<float>(atof(argv[i] + 7));
 		else if (strncmp(argv[i], "--offset=", 9) == 0)
 			info.config_qs.sieve_offset = atof(argv[i] + 9);
+		else if (strncmp(argv[i], "--excess=", 9) == 0)
+			info.config_qs.smooth_excess = atoi(argv[i] + 9);
 		else if (strncmp(argv[i], "--pquality=", 11) == 0)
 			info.config_qs.pquality = atof(argv[i] + 11);
 		else if (strncmp(argv[i], "--base-size=", 12) == 0)
