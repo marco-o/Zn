@@ -1,6 +1,7 @@
 #include "znbasic.h"
 #include <iostream>
 #include <iomanip>
+#include <string.h>
 
 
 
@@ -80,13 +81,13 @@ void log_base_t::init(int argc, char *argv[])
 {
 	for (int i = 0; i < argc; i++)
 		if (strncmp(argv[i], "--log-level=", 12) == 0)
-			if (strcmp(argv[i], "debug"))
+			if (strcmp(argv[i], "debug") == 0)
 				level() = debug_e;
-			else if (strcmp(argv[i], "info"))
+			else if (strcmp(argv[i], "info") == 0)
 				level() = info_e;
-			else if (strcmp(argv[i], "warning"))
+			else if (strcmp(argv[i], "warning") == 0)
 				level() = warning_e;
-			else if (strcmp(argv[i], "trace"))
+			else if (strcmp(argv[i], "trace") == 0)
 				level() = trace_e;
 }
 
