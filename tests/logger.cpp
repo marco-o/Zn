@@ -4,7 +4,6 @@
 #include <string.h>
 
 
-
 template <class stream_t>
 class log_stream_t : public log_base_t
 {

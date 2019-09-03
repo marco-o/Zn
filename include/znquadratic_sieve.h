@@ -800,19 +800,7 @@ namespace zn
 #endif
 			for (; pos < size; pos += static_cast<size_t>(base.prime))
 			{
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-				if (abs(values[pos] - std::log(safe_cast<real>(ns_[pos]))) > 1e-4)
-					std::cout << "Hey!\n";
-#endif
 				values[pos] += base.logp;
-#if DBG_SIEVE >= DBG_SIEVE_DEBUG
-				if (ns_[pos] % base.prime0 != 0)
-					errs++;
-				else
-					ns_[pos] /= base.prime0;
-				if (abs(values[pos] - std::log(safe_cast<real>(ns_[pos]))) > 1e-4)
-					std::cout << "Hey!\n";
-#endif
 			}
 		}
 		void build_sieving_range_exact(const sieve_range_t &range, std::vector<real> &values)
