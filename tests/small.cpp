@@ -14,6 +14,7 @@
 #include <numeric>
 #include <map>
 
+#include <intrin.h>
 //#define HAVE_LARGE_PRIME
 //#define HAVE_MULTIPLIER_STATS
 template <class stream_t>
@@ -33,6 +34,12 @@ namespace zn
 		void direct(void) { direct_++; }
 		void discarded(void) { discarded_++; }
 		void attempts(void) { attempts_++; }
+		void attempts_log(void) 
+		{
+			int delta = std::min<int>(attempts_ - attempts_ref_ - 1, sizeof(attempts_hist_) / sizeof(int) - 1);
+			attempts_hist_[delta]++;
+			attempts_ref_ = attempts_; 
+		}
 		void promoted(void) { promoted_++; }
 		void polynomials(void) { polynomials_++; }
 		void large_primes(void) { large_primes_++; }
@@ -55,6 +62,9 @@ namespace zn
 					  << "Accepted = " << (processed_ - discarded_) << "\n"
 					  << "Polynomials = " << polynomials_  << "\n"
 				;
+			for (auto attempts : attempts_hist_)
+				std::cout << attempts << " ";
+			std::cout << std::endl;
 		}
 	private:
 		int processed_ = 0;
@@ -64,6 +74,8 @@ namespace zn
 		int direct_ = 0;
 		int attempts_ = 0;
 		int polynomials_ = 0;
+		int attempts_ref_ = 0;
+		int attempts_hist_[16] = { 0 };
 	};
 	struct stats_none_t
 	{
@@ -73,6 +85,7 @@ namespace zn
 		void discarded(void) {}
 		void promoted(void) {}
 		void attempts(void) { }
+		void attempts_log(void) {}
 		void polynomials(void) {}
 		void large_primes(void) {}
 		template <class large_int, class small_int>
@@ -97,8 +110,8 @@ namespace zn
 		double	pquality = 5.0; // to select primes for 'a' coefficient
 		int		smooth_excess = 4; // number of smooths to find
 		bool	more_polys = false;
-		interpolator_t base_int = { 30.0f, 0.1f };// actual baseof n is a + b * bitcount(n)
-		interpolator_t m2_int = { 600.0f, 10.0f };
+		interpolator_t base_int = { 24.0f, 0.4f };// actual baseof n is a + b * msb(n), another good is {18, 0.18}
+		interpolator_t m2_int = { 800.0f, 40.0f };
 	};
 	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
 	template <class stat_t = stats_t, class large_int = long long, class small_int = int>
@@ -351,7 +364,7 @@ namespace zn
 				info.n = n;
 				info.multi = 1;
 			}
-			int bits = bitcount(info.n);
+			int bits = msb(info.n);
 			info.config.base_size = interpolate(info.config.base_int, bits);
 			info.config.m2 = interpolate(info.config.m2_int, bits);
 			info.base.clear();
@@ -576,7 +589,7 @@ namespace zn
 		}
 		small_int build_result(info_t &info, int start_index) const
 		{
-			int sall = info.smooths.size();
+			int sall = info.smooth_perm.size();
 			int size = static_cast<int>(info.factors.size());
 			for (int i = start_index; i < sall; i++)
 			{
@@ -603,7 +616,11 @@ namespace zn
 				large_int n = info.n / info.multi;
 				large_int q = euclidean_algorithm(n, s.sqr + s.axb);
 				if (q != 1 && q != n)
-					return static_cast<small_int>(q);
+				{
+					stats_.attempts_log();
+					auto p = n / q;
+					return static_cast<small_int>(std::min(p, q));
+				}
 #if 0
 				q = euclidean_algorithm(n, abs(s.sqr - s.axb));
 				if (q != 1 && q != n)
@@ -653,6 +670,28 @@ namespace zn
 			if (r)
 				std::cout << "Hmmm\n";
 		}
+		void remove_unused_smooths(info_t &info, small_int &smooths_size) const
+		{
+			factors_t mask = 0;
+			factors_t mask_end = static_cast<factors_t>(1) << (smooths_size - 1);
+			for (auto &f : info.factors)
+				if (bitcount(f.mask) == 1)
+				{
+					mask |= f.mask;
+					f.mask = 0;
+				}
+			for (int i = 0; mask ; i++, mask >>= 1)
+				if (mask & 1)
+				{
+					while (mask & mask_end && i < smooths_size)
+					{
+						mask_end >>= 1;
+						smooths_size--;
+					}
+					std::swap(info.smooth_perm[i], info.smooth_perm[--smooths_size]);
+				}
+			info.smooth_perm.erase(info.smooth_perm.begin() + smooths_size, info.smooth_perm.end());
+		}
 		small_int solve(info_t &info) const
 		{
 			small_int result = 1;
@@ -662,6 +701,7 @@ namespace zn
 			info.smooth_index.clear();
 			for (int k = 0; k < smooths_size; k++)
 				info.smooth_perm[k] = k;
+			//remove_unused_smooths(info, smooths_size);
 			int i = 0; // pointer to factors
 			int j = 0; // pointer to smooths
 			factors_t f, bit;
@@ -740,6 +780,43 @@ namespace zn
 		return bitcount(t1[0]) + bitcount(t1[1]);
 	}
 
+	const uint8_t msb_table[] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
+
+	inline int msb(const uint8_t &t)
+	{
+		if (t & 0xF0)
+			return msb_table[t >> 4] + 4;
+		else
+			return msb_table[t];
+	}
+
+	inline int msb(const uint16_t &t)
+	{
+		const uint8_t *t1 = reinterpret_cast<const uint8_t *>(&t);
+		if (t1[1])
+			return msb(t1[1]) + 8;
+		else
+			return msb(t1[0]);
+	}
+
+	inline int msb(const uint32_t &t)
+	{
+		const uint16_t *t1 = reinterpret_cast<const uint16_t *>(&t);
+		if (t1[1])
+			return msb(t1[1]) + 16;
+		else
+			return msb(t1[0]);
+	}
+
+	inline int msb(const long long &t)
+	{
+		const uint32_t *t1 = reinterpret_cast<const uint32_t *>(&t);
+		if (t1[1])
+			return msb(t1[1]) + 32;
+		else
+			return msb(t1[0]);
+	}
+
 	template <class T>
 	struct mul_t
 	{
@@ -758,6 +835,31 @@ namespace zn
 	template <>
 	struct mul_t<uint64_t>
 	{
+#if 0
+		static uint64_t mod(uint64_t a, uint64_t b, uint64_t c) 
+		{
+			uint64_t d; /* to hold the result of a*b mod c */
+						/* calculates a*b mod c, stores result in d */
+			uint64_t dl = _umul128(a, b, &d);
+			_asm {
+				mov rax, qword ptr a;
+				mul b;
+				div c;
+				mov [d], rdx;
+			}
+#if 0
+			asm("mov %1, %%rax;"        /* put a into rax */
+				"mul %2;"               /* mul a*b -> rdx:rax */
+				"div %3;"               /* (a*b)/c -> quot in rax remainder in rdx */
+				"mov %%rdx, %0;"        /* store result in d */
+				:"=r"(d)                /* output */
+				: "r"(a), "r"(b), "r"(c) /* input */
+				: "%rax", "%rdx"         /* clobbered registers */
+			);
+#endif
+			return d;
+		}
+#else
 		static uint64_t mod(const uint64_t &x, const uint64_t &y, const uint64_t &m)
 		{
 			uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32)};
@@ -767,17 +869,34 @@ namespace zn
 			uint64_t z0 = x1[0] * y1[0];
 			uint64_t z1 = x1[0] * y1[1] + x1[1] * y1[0] ;
 			uint64_t z00 = z0 + ((z1 & 0xFFFFFFFF) << 32); // overflow here?
-			uint16_t *z01 = (uint16_t *)&z00;
 			uint64_t z2 = x1[1] * y1[1] + (z1 >> 32) ;
 			if (z00 < z0) // overflow on z00!
 				z2++;
 			z2 = z2 % m;
-			z2 = ((z2 << 16) + z01[3]) % m;
-			z2 = ((z2 << 16) + z01[2]) % m;
-			z2 = ((z2 << 16) + z01[1]) % m;
-			z2 = ((z2 << 16) + z01[0]) % m;
+			uint16_t *z21 = (uint16_t *)&m;
+			if (z21[3] == 0)
+			{
+				uint16_t *z01 = (uint16_t *)&z00;
+				z2 = ((z2 << 16) + z01[3]) % m;
+				z2 = ((z2 << 16) + z01[2]) % m;
+				z2 = ((z2 << 16) + z01[1]) % m;
+				z2 = ((z2 << 16) + z01[0]) % m;
+			}
+			else
+			{
+				uint8_t *z01 = (uint8_t *)&z00;
+				z2 = ((z2 << 8) + z01[7]) % m;
+				z2 = ((z2 << 8) + z01[6]) % m;
+				z2 = ((z2 << 8) + z01[5]) % m;
+				z2 = ((z2 << 8) + z01[4]) % m;
+				z2 = ((z2 << 8) + z01[3]) % m;
+				z2 = ((z2 << 8) + z01[2]) % m;
+				z2 = ((z2 << 8) + z01[1]) % m;
+				z2 = ((z2 << 8) + z01[0]) % m;
+			}
 			return z2;
 		}
+#endif
 	};
 
 	template <>
@@ -1117,6 +1236,8 @@ namespace zn
 						std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
 					if (qs.factor(static_cast<long long>(item.n), qsinfo) > 1)
 						factored++;
+					else
+						std::cout << "Missed " << item.n;
 					if (info.count && examined >= info.count)
 						break;
 				}

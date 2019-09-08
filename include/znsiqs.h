@@ -399,23 +399,23 @@ namespace zn
 						s = inherit_t::smooth_idle_e;
 					else
 					{
-#ifdef FAVE_FACTORIZATION_TEST
+#ifdef HAVE_FACTORIZATION_TEST
 						auto &file = test_file();
 						file << reminder;
 #endif
 						if (!custom_prime_test(reminder))
 						{
 							int count = 800; // TODO: how to determine this?
-#ifdef FAVE_FACTORIZATION_TEST
+#ifdef HAVE_FACTORIZATION_TEST
 							file << " c ";
 #endif
-							large_f[0] = safe_cast<small_int>(pollards_rho(reminder, count, 2));
+							large_f[0] = 1; // safe_cast<small_int>(pollards_rho(reminder, count, 2));
 							if (large_f[0] > 1)
 							{
 								large_f[1] = safe_cast<small_int>(reminder / large_f[0]);
 								if (large_f[0] > large_f[1])
 									std::swap(large_f[0], large_f[1]);
-#ifdef FAVE_FACTORIZATION_TEST
+#ifdef HAVE_FACTORIZATION_TEST
 								test_file() << large_f[0] << " x " << large_f[1];
 #endif
 								if (large_f[1] > info.thrs2)
@@ -428,7 +428,7 @@ namespace zn
 								s = inherit_t::smooth_unfactored_e;
 							}
 						}
-#ifdef FAVE_FACTORIZATION_TEST
+#ifdef HAVE_FACTORIZATION_TEST
 						else
 							file << " p";
 						file << "\n";
@@ -595,7 +595,7 @@ namespace zn
 				return true;  // Yeheh! probably prime.
 			}
 		private:
-#ifdef FAVE_FACTORIZATION_TEST
+#ifdef HAVE_FACTORIZATION_TEST
 			std::ofstream &test_file(void)
 			{
 				static std::ofstream ofile("test.txt");
@@ -729,7 +729,7 @@ namespace zn
 				}
 				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
-				actual_bsize = inherit_t::actual_base_size(base_);
+				actual_bsize = std::max(inherit_t::actual_base_size(base_), base_info.size() / 3) ;
 #ifdef HAVE_TIMING
 				time_estimator.update(static_cast<int>(smooths.size()), analysis_.promoted);
 #endif
