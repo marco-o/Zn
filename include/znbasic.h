@@ -239,7 +239,7 @@ namespace zn
         return std::tuple<T, T, T>(r[i], s[i], t[i]) ;
     }
 	//
-	// Some functions define in boost::multipfrecision are adapted
+	// Some functions define in boost::multiprecision are adapted
 	// here for predefined types
 	//
 	template <class N>
@@ -248,11 +248,22 @@ namespace zn
 		return (n >> bit) & 1;
 	}
 
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, void>::type  bit_set(N &n, unsigned int bit)
+	{
+		n |= static_cast<T>(1) << bit;
+	}
+
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, int>::type  is_zero(N n)
+	{
+		return n == 0;
+	}
 
 	template <class N>
 	typename std::enable_if<std::is_integral<N>::value, int>::type  signbit(N n)
 	{
-		return static_cast<int>(n);
+		return (n > 0 ? 1 : (n < 0 ? -1 : 0));
 	}
 
 	template <class N>
@@ -327,6 +338,46 @@ namespace zn
 		return false;
 	}
 
-	
+	struct msb_t
+	{
+		static int eval(const uint8_t& t)
+		{
+			static const uint8_t msb_table[] = { 0, 0, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3 };
+			if (t & 0xF0)
+				return msb_table[t >> 4] + 4;
+			else
+				return msb_table[t];
+		}
+		static int eval(const uint16_t& t)
+		{
+			const uint8_t* t1 = reinterpret_cast<const uint8_t*>(&t);
+			if (t1[1])
+				return eval(t1[1]) + 8;
+			else
+				return eval(t1[0]);
+		}
+
+		static int eval(const uint32_t& t)
+		{
+			const uint16_t* t1 = reinterpret_cast<const uint16_t*>(&t);
+			if (t1[1])
+				return eval(t1[1]) + 16;
+			else
+				return eval(t1[0]);
+		}
+
+		static int eval(const long long& t)
+		{
+			const uint32_t* t1 = reinterpret_cast<const uint32_t*>(&t);
+			if (t1[1])
+				return eval(t1[1]) + 32;
+			else
+				return eval(t1[0]);
+		}
+
+	};
+
+
+
 }
 #endif

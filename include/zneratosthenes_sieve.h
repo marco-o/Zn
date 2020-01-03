@@ -46,7 +46,7 @@ namespace zn
             if (sieve[i])
                 for (Slot j = 0, k = sieve[i] ; k ; j++, k >>= 1)
                     if (k & 1)
-                        result.push_back(i * bits_per_slot + j) ;
+                        result.push_back(static_cast<T>(i * bits_per_slot + j)) ;
         return result ;
     }
 }

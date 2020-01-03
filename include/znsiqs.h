@@ -279,9 +279,12 @@ namespace zn
 		struct smooth_info_t
 		{
 			poly_t		poly;
-			small_int	thrs2;
-			small_int	thrs20;
-			small_int	thrs3;
+			small_int	thrs2;	// Candidate threshold for large primes
+								// smaller than maximum (see thrs20 below)
+			small_int	thrs20; // square of largest prime in base.
+								// numbers smaller than this one are primes for sure
+			small_int	thrs3; // threshold for residuals not cared about.
+			                   // higher in case of double large prime used
 			large_int	n;
 			bool		have_double;
 			std::vector<typename sieve_t::sieve_run_t> runs;
@@ -405,7 +408,6 @@ namespace zn
 #endif
 						if (!custom_prime_test(reminder))
 						{
-							int count = 800; // TODO: how to determine this?
 #ifdef HAVE_FACTORIZATION_TEST
 							file << " c ";
 #endif
@@ -619,7 +621,7 @@ namespace zn
 			size_t			  steps;
 
 			real			  offset;
-			small_int         thrs2;  // reduced square; values bugger are not considered
+			small_int         thrs2;  // reduced square; values bigger are not considered
 			small_int		  thrs20; // exact square
 			small_int		  thrs3;
 			bool			  have_double;
@@ -629,8 +631,8 @@ namespace zn
 				thrs20 = largest_prime * largest_prime;
 				const int div = 8;
 				thrs2 = thrs20 / div;
-				thrs3 = thrs2 * largest_prime / div;
-			}
+				thrs3 = std::min<small_int>((thrs2 / div) * (largest_prime / div), 1LL << 55);
+				}
 			void compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
 			{
 				if (init.empty())

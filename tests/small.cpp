@@ -102,6 +102,149 @@ namespace zn
 		return static_cast<int>(interp.a + bits * interp.b);
 	}
 
+
+	template <class T, int N>
+	struct bitmask_op_t
+	{
+		static void init(T* data, T value)
+		{
+			data[0] = value;
+			bitmask_op_t<T, N - 1>::init(data + 1, value);
+		}
+		static bool is_zero(const T* rhs)
+		{
+			if (rhs[0])
+				return false;
+			return bitmask_op_t<T, N - 1>::is_zero(rhs + 1);
+		}
+		static unsigned int eval_msb(const T* data)
+		{
+			if (data[N - 1])
+				return sizeof(T) * 8 + msb(data[N - 1]);
+			else
+				return bitmask_op_t<T, N - 1>::eval_msb(data);
+		}
+		static void eval_or(T* lhs, const T *rhs)
+		{
+			lhs[0] |= rhs[0];
+			bitmask_op_t<T, N - 1>::eval_or(lhs + 1, rhs + 1);
+		}
+		static void eval_xor(T* lhs, const T* rhs)
+		{
+			lhs[0] ^= rhs[0];
+			bitmask_op_t<T, N - 1>::eval_xor(lhs + 1, rhs + 1);
+		}
+		static void eval_and(T* lhs, const T* rhs)
+		{
+			lhs[0] &= rhs[0];
+			bitmask_op_t<T, N - 1>::eval_and(lhs + 1, rhs + 1);
+		}
+		static void eval_not(T *data)
+		{
+			data[0] = ~data[0];
+			bitmask_op_t<T, N - 1>::eval_not(data + 1);
+		}
+	};
+
+	template <class T>
+	struct bitmask_op_t<T, 0>
+	{
+		static void init(T *, T){}
+		static bool is_zero(const T*) { return true; }
+		static unsigned int eval_msb(const T*) { return 0; }
+		static void eval_or(T*, const T*) {}
+		static void eval_xor(T*, const T*) {}
+		static void eval_and(T*, const T*) {}
+		static void eval_not(T*) {}
+	};
+
+	template <class T, int N>
+	class bitmask_t
+	{
+		enum { bit_size = sizeof(T) * 8 };
+	public:
+		bitmask_t(T t = 0)
+		{
+			data_[0] = t;
+			bitmask_op_t<T, N-1>::init(data_ + 1, 0);
+		}
+		bool is_set(size_t bit) const
+		{
+			return (data_[bit / bit_size] & (1 << (bit % bit_size))) != 0;
+		}
+		bool empty(void) const
+		{
+			return bitmask_op_t<T, N>::is_zero(data_);
+		}
+		unsigned int msb(void) const
+		{
+			return bitmask_op_t<T, N>::eval_msb(data_);
+		}
+		void set(size_t bit)
+		{
+			data_[bit / bit_size] = 1 << (bit % bit_size);
+		}
+		bitmask_t<T, N> &operator=(T value)
+		{
+			data_[0] = value;
+			return *this;
+		}
+		bitmask_t<T, N> &operator|=(const bitmask_t<T, N> &rhs)
+		{
+			bitmask_op_t<T, N>::eval_or(data_, rhs.data_);
+			return *this;
+		}
+		bitmask_t<T, N>& operator^=(const bitmask_t<T, N>& rhs)
+		{
+			bitmask_op_t<T, N>::eval_xor(data_, rhs.data_);
+			return *this;
+		}
+		bitmask_t<T, N>& operator&=(const bitmask_t<T, N>& rhs)
+		{
+			bitmask_op_t<T, N>::eval_and(data_, rhs.data_);
+			return *this;
+		}
+		bitmask_t<T, N>& operator~(void)
+		{
+			bitmask_op_t<T, N>::eval_not(data_);
+			return *this;
+		}
+	private:
+		T data_[N];
+	};
+
+	template <class T, int N>
+	bitmask_t<T, N> operator&(const bitmask_t<T, N>& lhs, const bitmask_t<T, N>& rhs)
+	{
+		bitmask_t<T, N> result(lhs);
+		return result &= rhs;
+
+	}
+
+	template <class T, int N>
+	bool bit_test(const bitmask_t<T, N>& value, unsigned int bit)
+	{
+		return value.is_set(bit);
+	}
+
+	template <class T, int N>
+	void bit_set(bitmask_t<T, N>& value, unsigned int bit)
+	{
+		value.set(bit);
+	}
+
+	template <class T, int N>
+	bool is_zero(const bitmask_t<T, N>& value)
+	{
+		return value.empty();
+	}
+
+	template <class T, int N>
+	unsigned int msb(const bitmask_t<T, N>& value)
+	{
+		return value.msb();
+	}
+
 	struct config_qs_t
 	{
 		int		m2 = 1000 ;
@@ -203,7 +346,8 @@ namespace zn
 		private:
 			std::vector<float> logk_;
 		};
-		typedef long long factors_t;
+		//typedef long long factors_t;
+		typedef bitmask_t<int, 3> factors_t;
 		struct smooth_t
 		{
 			large_int sqr; // product of prime with even exponents (/ 2)
@@ -243,7 +387,7 @@ namespace zn
 			std::vector<factor_info_t>	 factors;
 			std::vector<int>			 smooth_perm;
 			std::vector<int>			 smooth_index;
-			int							 smooth_required;
+			size_t						 smooth_required;
 #ifdef HAVE_LARGE_PRIME
 			std::map<small_int, smooth_t> large_primes;
 #endif
@@ -251,7 +395,7 @@ namespace zn
 			small_int					 sqr2n; // sqrt(n * 2)
 			small_int					 sqrn; // sqrt(n)
 			config_qs_t					 config;
-			factors_t perm_bit(int j) const { return static_cast<factors_t>(1) << smooth_perm[j]; }
+			factors_t perm_bit(size_t j) const { return static_cast<factors_t>(1) << smooth_perm[j]; }
 		};
 		quadratic_sieve_cached_t(small_int primes = 256) : multiplier_(12)
 		{
@@ -261,7 +405,7 @@ namespace zn
 				prime.erase(prime.begin() + primes, prime.end());
 			for (auto p : prime)
 				primes_.push_back(prime_t(p));
-			primes_range_ = std::make_pair(primes_.begin(), primes_.begin() + std::min<int>(10, primes_.size()));
+			primes_range_ = std::make_pair(primes_.begin(), primes_.begin() + std::min<size_t>(10, primes_.size()));
 #ifdef HAVE_MULTIPLIER_STATS
 			mstats_.open("mstats.txt");
 #endif
@@ -523,8 +667,8 @@ namespace zn
 						large_int f1 = poly.a2 * x + 2 * poly.b; // evaluate polynomial
 						f = f1 * x + poly.c;
 					}
-					factors_t bit = 1;
-					bit <<= info.smooths.size();
+					factors_t bit(0);
+					bit_set(bit, static_cast<unsigned>(info.smooths.size()));
 					smooth_t smooth(poly.a2 * x + poly.b, poly.a);
 					if (f < 0)
 					{
@@ -544,7 +688,7 @@ namespace zn
 						if (count & 1)
 						{
 							info.factors[k + 1].mask |= bit;
-							smooth.factors |= static_cast<factors_t>(1) << (k + 1);
+							bit_set(smooth.factors, static_cast<unsigned>(k + 1));
 						}
 						else
 							info.factors[k + 1].mask &= ~bit;
@@ -589,24 +733,28 @@ namespace zn
 		}
 		small_int build_result(info_t &info, int start_index) const
 		{
-			int sall = info.smooth_perm.size();
-			int size = static_cast<int>(info.factors.size());
-			for (int i = start_index; i < sall; i++)
+			size_t sall = info.smooth_perm.size();
+			size_t size = info.factors.size();
+			for (size_t i = start_index; i < sall; i++)
 			{
-				factors_t f = info.perm_bit(i);
 				int ip = info.smooth_perm[i];
 				smooth_t s = info.smooths[ip]; // should pick up its list of factors
+#ifdef _DEBUG
+				smooth_invariant(info, s);
+#endif
 				for (int j = 0; j < size; j++)
-					if (info.factors[j].mask & f)
+					if (bit_test(info.factors[j].mask, ip))
 					{
 						int sindex = info.smooth_index[j];
 						const smooth_t &s1 = info.smooths[sindex];
 						s.axb = mul_mod(s.axb, s1.axb, info.n);
 						s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
-						factors_t common = s.factors & s1.factors;
+						factors_t common = s.factors;
+						common &= s1.factors;
+						int common_bits = msb(common);
 						s.factors ^= s1.factors;
-						for (int k = 0; common; k++, common >>= 1)
-							if (common & 1)
+						for (int k = 0; k <= common_bits; k++)
+							if (bit_test(common, k))
 								s.sqr = mul_mod<large_int>(s.sqr, info.factors[k].value, info.n);
 #ifdef _DEBUG
 						smooth_invariant(info, s);
@@ -636,10 +784,12 @@ namespace zn
 			{
 				auto &f = info.smooths[info.smooth_index[i]];
 				info.smooths_tmp.push_back(f);
-				factors_t bit = static_cast<factors_t>(1) << i;
+				factors_t bit(0);
+				bit_set(bit, i);
 				auto m = f.factors;
-				for (int j = 0; m; j++, m >>= 1)
-					if (m & 1)
+				int j0 = msb(m);
+				for (int j = 0; j <= j0; j++)
+					if (bit_test(m, j))
 						info.factors[j].mask |= bit;
 			}
 			info.smooths = info.smooths_tmp;
@@ -662,9 +812,10 @@ namespace zn
 		{
 			large_int q1 = mul_mod(smooth.axb, smooth.axb, info.n);
 			large_int q2 = mul_mod(smooth.sqr, smooth.sqr, info.n);
-			int index = 0;
-			for (auto mask = smooth.factors; mask; mask >>= 1, index++)
-				if (mask & 1)
+			auto mask = smooth.factors;
+			int fmsb = msb(mask);
+			for (int index = 0 ; index <= fmsb ; index++)
+				if (bit_test(mask, index))
 					q2 = mul_mod<large_int>(q2, info.factors[index].value, info.n);
 			large_int r = (q1 - q2) % info.n;
 			if (r)
@@ -704,21 +855,22 @@ namespace zn
 			//remove_unused_smooths(info, smooths_size);
 			int i = 0; // pointer to factors
 			int j = 0; // pointer to smooths
-			factors_t f, bit;
+			factors_t f;
 			print(info);
 			for (; i < base_size; i++)
-				if ((f = info.factors[i].mask) != 0)
+				if (!is_zero(f = info.factors[i].mask))
 				{
-					if ((f & (bit = info.perm_bit(j))) == 0)
+					unsigned int b;
+					if (bit_test(f, b = info.smooth_perm[j]) == 0)
 						for (int k = j + 1; k < smooths_size; k++)
-							if (f & (bit = info.perm_bit(k)))
+							if (bit_test(f, b = info.smooth_perm[k]))
 							{
 								std::swap(info.smooth_perm[j], info.smooth_perm[k]);
 								break;
 							}
 					// Gaussian elimination step
 					for (int k = i + 1; k < base_size; k++)
-						if (info.factors[k].mask & bit)
+						if (bit_test(info.factors[k].mask, b))
 							info.factors[k].mask ^= f;
 					info.smooth_index.push_back(info.smooth_perm[j]);
 					j++;
@@ -729,11 +881,11 @@ namespace zn
 
 			int j0 = j;
 			for (--i, --j ;i >= 0 ; i--)
-				if ((f = info.factors[i].mask) != 0)
+				if (!is_zero(f = info.factors[i].mask))
 				{
-					factors_t bit = info.perm_bit(j);
+					int b = info.smooth_perm[j];
 					for (int h = 0; h < i; h++)
-						if (info.factors[h].mask & bit)
+						if (bit_test(info.factors[h].mask, b))
 							info.factors[h].mask ^= f;
 					j--;
 					print(info);
@@ -778,43 +930,6 @@ namespace zn
 	{
 		const uint32_t *t1 = reinterpret_cast<const uint32_t *>(&t);
 		return bitcount(t1[0]) + bitcount(t1[1]);
-	}
-
-	const uint8_t msb_table[] = { 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4 };
-
-	inline int msb(const uint8_t &t)
-	{
-		if (t & 0xF0)
-			return msb_table[t >> 4] + 4;
-		else
-			return msb_table[t];
-	}
-
-	inline int msb(const uint16_t &t)
-	{
-		const uint8_t *t1 = reinterpret_cast<const uint8_t *>(&t);
-		if (t1[1])
-			return msb(t1[1]) + 8;
-		else
-			return msb(t1[0]);
-	}
-
-	inline int msb(const uint32_t &t)
-	{
-		const uint16_t *t1 = reinterpret_cast<const uint16_t *>(&t);
-		if (t1[1])
-			return msb(t1[1]) + 16;
-		else
-			return msb(t1[0]);
-	}
-
-	inline int msb(const long long &t)
-	{
-		const uint32_t *t1 = reinterpret_cast<const uint32_t *>(&t);
-		if (t1[1])
-			return msb(t1[1]) + 32;
-		else
-			return msb(t1[0]);
 	}
 
 	template <class T>
@@ -1037,6 +1152,30 @@ namespace zn
 			}
 			return x == 1;
 		}
+		static bool fermat_test_montg(const large_int &n)
+		{
+			large_int nm1 = n - 1;
+			//
+			// Begin with a single Fermat test - it excludes a lot of candidates:
+			//
+			large_int q1(228); // We know n is greater than this, as we've excluded small factors
+			large_int q2 = mul_mod(q1, q1, n);
+			large_int b1 = static_cast<large_int>(1) << (msb(nm1) - 1);
+			for (; b1; b1 >>= 1)
+			{
+				if (nm1 & b1)
+				{
+					q1 = mul_mod(q1, q2, n);
+					q2 = mul_mod(q2, q2, n);
+				}
+				else
+				{
+					q2 = mul_mod(q1, q2, n);
+					q1 = mul_mod(q1, q1, n);
+				}
+			}
+			return q1 == 1;
+		}
 
 		static bool custom_prime_test(const large_int &n, int *seeds, int count)
 		{
@@ -1131,14 +1270,11 @@ namespace zn
 				<< "Errors = " << errors << "\n"
 				<< "composite = " << composite << "\n";
 		}
-		static void brute_force(const std::vector<input_item_t> &items, large_int largest, large_int smallest, int count)
+		static void brute_force(const std::vector<input_item_t> &items, large_int largest, large_int /* smallest*/, int count)
 		{
 			std::cout << "Brute force factorization\n";
 			small_int bound = safe_cast<small_int>(sqrt(largest));
 			auto primes = eratosthenes_sieve<small_int>(bound);
-			small_int begin = safe_cast<small_int>(sqrt(smallest));
-			auto it = std::lower_bound(primes.begin(), primes.end(), begin - 1);
-			primes.erase(primes.begin(), it);
 			int examined = 0;
 			int factored = 0;
 			for (const auto &item : items)
@@ -1148,6 +1284,7 @@ namespace zn
 					for (auto p : primes)
 						if (item.n % p == 0)
 						{
+							std::cout << item.n << ": " << p << " x " << item.n / p << std::endl;
 							factored++;
 							break;
 						}
@@ -1236,8 +1373,6 @@ namespace zn
 						std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
 					if (qs.factor(static_cast<long long>(item.n), qsinfo) > 1)
 						factored++;
-					else
-						std::cout << "Missed " << item.n;
 					if (info.count && examined >= info.count)
 						break;
 				}
@@ -1304,13 +1439,30 @@ namespace zn
 			std::cout << "FExamined = " << examined << ", errors = " << errors << "\n";
 			return examined;
 		}
-
+		static int fermat_prime_test_montag(const std::vector<input_item_t> &items, int count)
+		{
+			int examined = 0;
+			int errors = 0;
+			for (const auto &item : items)
+			{
+				examined++;
+				if (examined % 1000 == 0)
+					std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
+				bool prime = fermat_test_montg(item.n);
+				if (prime != item.declared_prime)
+					errors++;
+				if (count && examined >= count)
+					break;
+			}
+			std::cout << "FExamined = " << examined << ", errors = " << errors << "\n";
+			return examined;
+		}
 		static void process(const test_info_t &info)
 		{
 			std::cout << "Reading file.." << std::endl;
 			auto items = load(info.file);
 			large_int largest = 0;
-			large_int smallest = std::numeric_limits<small_int>::max();
+			large_int smallest = std::numeric_limits<long long>::max();
 			for (const auto &item : items)
 			{
 				if (item.n > largest)
@@ -1318,7 +1470,8 @@ namespace zn
 				else if (item.n < smallest)
 					smallest = item.n;
 			}
-			std::cout << "Start processing: range = [" << smallest << ", " << largest << "]" << std::endl;
+			std::cout << "Start processing: range = [" << smallest << ", " << largest << "]"
+				      << " (" << msb(smallest) << ", " << msb(largest) << ")" << std::endl;
 			std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 			int seeds[] = { 2, 5, 19, 41, 67, 79 };
 			double examined = static_cast<double>(info.count ? info.count : items.size());
@@ -1351,6 +1504,9 @@ namespace zn
 				break;
 			case 7:
 				examined = fermat_prime_test(items, info.count);
+				break;
+			case 71:
+				examined = fermat_prime_test_montag(items, info.count);
 				break;
 			}
 			auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
