@@ -251,7 +251,13 @@ namespace zn
 	template <class N>
 	typename std::enable_if<std::is_integral<N>::value, void>::type  bit_set(N &n, unsigned int bit)
 	{
-		n |= static_cast<T>(1) << bit;
+		n |= static_cast<N>(1) << bit;
+	}
+
+	template <class N>
+	typename std::enable_if<std::is_integral<N>::value, void>::type  bit_unset(N& n, unsigned int bit)
+	{
+		n &= ~(static_cast<N>(1) << bit);
 	}
 
 	template <class N>

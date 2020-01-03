@@ -182,7 +182,11 @@ namespace zn
 		}
 		void set(size_t bit)
 		{
-			data_[bit / bit_size] = 1 << (bit % bit_size);
+			data_[bit / bit_size] |= 1 << (bit % bit_size);
+		}
+		void unset(size_t bit)
+		{
+			data_[bit / bit_size] &= ~(1 << (bit % bit_size));
 		}
 		bitmask_t<T, N> &operator=(T value)
 		{
@@ -231,6 +235,12 @@ namespace zn
 	void bit_set(bitmask_t<T, N>& value, unsigned int bit)
 	{
 		value.set(bit);
+	}
+
+	template <class T, int N>
+	void bit_unset(bitmask_t<T, N>& value, unsigned int bit)
+	{
+		value.unset(bit);
 	}
 
 	template <class T, int N>
@@ -346,8 +356,8 @@ namespace zn
 		private:
 			std::vector<float> logk_;
 		};
-		//typedef long long factors_t;
-		typedef bitmask_t<int, 3> factors_t;
+		typedef long long factors_t;
+		//typedef bitmask_t<unsigned int, 3> factors_t;
 		struct smooth_t
 		{
 			large_int sqr; // product of prime with even exponents (/ 2)
@@ -667,13 +677,12 @@ namespace zn
 						large_int f1 = poly.a2 * x + 2 * poly.b; // evaluate polynomial
 						f = f1 * x + poly.c;
 					}
-					factors_t bit(0);
-					bit_set(bit, static_cast<unsigned>(info.smooths.size()));
+					unsigned int bit = static_cast<unsigned>(info.smooths.size());
 					smooth_t smooth(poly.a2 * x + poly.b, poly.a);
 					if (f < 0)
 					{
 						f = -f;
-						info.factors[0].mask |= bit;
+						bit_set(info.factors[0].mask, bit);
 						smooth.factors = 1;
 					}
 					for (size_t k = 0; k < info.config.base_size; k++)
@@ -687,11 +696,11 @@ namespace zn
 						}
 						if (count & 1)
 						{
-							info.factors[k + 1].mask |= bit;
+							bit_set(info.factors[k + 1].mask, bit);
 							bit_set(smooth.factors, static_cast<unsigned>(k + 1));
 						}
 						else
-							info.factors[k + 1].mask &= ~bit;
+							bit_unset(info.factors[k + 1].mask, bit);
 						for (int j = 1; j < count; j += 2)
 							smooth.sqr *= p;
 					}
@@ -1362,7 +1371,7 @@ namespace zn
 			int examined = 0;
 			int factored = 0;
 			std::cout << "Quadratic sieve\n";
-			quadratic_sieve_cached_t<stat, long long> qs(128);
+			quadratic_sieve_cached_t<stat, long long> qs(160);
 			quadratic_sieve_cached_t<stat, long long>::info_t qsinfo;
 			qsinfo.config = info.config_qs;
 			for (const auto &item : items)
