@@ -30,7 +30,7 @@ endif (BOOST_ROOT)
 add_executable(main main.cpp logger.cpp ${COMMON_HEADERS})
 add_executable(numbox numbox.cpp logger.cpp ${COMMON_HEADERS})
 add_executable(small small.cpp logger.cpp ${COMMON_HEADERS})
-
+add_executable(montgomery montgomery.cpp logger.cpp ../include/znbasic.h)
 
 if (Boost_UNIT_TEST_FRAMEWORK_FOUND)
 	if (GMP_ROOT)
