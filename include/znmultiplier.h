@@ -59,6 +59,11 @@ namespace zn
 		result[1] += (result[0] < c0 ? 1 : 0); // overflow on result[0]!
 	}
 #endif
+	void multiplication_unsigned(const std::uint32_t& a, const std::uint32_t& b, std::uint32_t* result)
+	{
+		std::uint64_t* res1 = reinterpret_cast< std::uint64_t*>(result);
+		*res1 = static_cast<std::uint64_t>(a)* b;
+	}
 
 	void multiplication_signed(const std::int64_t& a, const std::int64_t& b, std::int64_t* result)
 	{
@@ -102,10 +107,28 @@ namespace zn
 	public:
 		typedef typename T signed_type;
 		typedef typename std::make_unsigned<T>::type unsigned_type;
-		montgomery_t(signed_type n) : n_(n)
+		montgomery_t(signed_type n = 65537) 
 		{
+			init(n);
+		}
+		void init(signed_type n)
+		{
+			n_ = n;
 			n1_ = montgomery_inverse(n);
 			r2_ = compute_r2(n_);
+		}
+		unsigned_type mul(signed_type a, signed_type b)
+		{
+			if (a < 0)
+				if (b < 0)
+					return unred(prod(n_ - a, n_ - b));
+				else
+					return n_ - unred(prod(n_ - a, b));
+			else
+				if (b < 0)
+					return n_ - unred(prod(a, n_ - b));
+				else
+					return unred(prod(a, b));
 		}
 		unsigned_type mul(unsigned_type a, unsigned_type b)
 		{
@@ -172,7 +195,7 @@ namespace zn
 		}
 		unsigned_type compute_r2(const unsigned_type& n)
 		{
-			uint64_t c = static_cast<unsigned_type>(-1) % n;
+			unsigned_type c = static_cast<unsigned_type>(-1) % n;
 			for (int i = 0; i < sizeof(unsigned_type) * 8; i++)
 			{
 				c = (c << 1) + 1;
@@ -191,7 +214,8 @@ namespace zn
 	class intrinsic_multiplier_t
 	{
 	public:
-		intrinsic_multiplier_t(std::int64_t n) : n_(n) {}
+		intrinsic_multiplier_t(std::int64_t n = 65537) : n_(n) {}
+		void init(std::int64_t n) { n_ = n; }
 		std::uint64_t mul(std::uint64_t a, std::uint64_t b)
 		{
 			std::uint64_t h, l, r;

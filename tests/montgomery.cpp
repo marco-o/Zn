@@ -24,24 +24,36 @@ void speed_test(const char *tag, N n, N b)
 	std::cout << tag << ", time = " << time << std::endl;
 }
 
+template <class T>
+int simple_test(const std::vector<std::int64_t> &primes)
+{
+	int result = 0;
+	for (auto n : primes)
+		if (n > 10)
+		{
+			montgomery_t<T> mg(static_cast<T>(n));
+			for (int i = 0; i < n; i++)
+			{
+				T p = std::rand() % n;
+				T q = std::rand() % n;
+				T b = mg.mul(p, q);
+				T c = (p * q) % n;
+				if (b != c)
+					result++;
+			}
+		}
+	if (result)
+		std::cout << result << std::endl;
+	return result;
+}
+
 int main(int argc, char* argv[])
 {
 	std::vector<std::int64_t> primes = zn::eratosthenes_sieve<std::int64_t>(2000);
 	
-	for (auto n : primes)
-		if (n > 10)
-		{
-			montgomery_t<std::int64_t> mg(n);
-			for (int i = 0; i < n; i++)
-			{
-				std::uint64_t p = std::rand() % n;
-				std::uint64_t q = std::rand() % n;
-				std::uint64_t b = mg.mul(p, q);
-				std::uint64_t c = (p * q) % n;
-				if (b != c)
-					std::cout << b << std::endl;
-			}
-		}
+	simple_test<std::uint64_t>(primes);
+	simple_test<std::uint32_t>(primes);
+
 	std::uint64_t p = 1269093085800313;
 	std::uint64_t q = 3971584980549;
 	montgomery_t<std::int64_t> mgp(p);

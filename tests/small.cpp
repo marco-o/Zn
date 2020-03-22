@@ -7,6 +7,7 @@
 #include "zneratosthenes_sieve.h"
 #include "znelliptic_curve_fact.h"
 #include "znquadratic_residue.h"
+#include "znmultiplier.h"
 #include "boost/multiprecision/cpp_int.hpp"
 #include <vector>
 #include <fstream>
@@ -388,6 +389,8 @@ namespace zn
 		};
 		struct info_t
 		{
+			typedef montgomery_t<large_int> multiplier_t;
+			multiplier_t				 mul;
 			large_int					 n;
 			int							 multi; // multiplier, most times 1
 			std::vector<const prime_t *> base; 
@@ -426,6 +429,7 @@ namespace zn
 		}
 		small_int factor(const large_int &n, info_t &info) const
 		{
+			info.mul.init(n);
 			small_int result = factor_imp(n, info, false);
 			if (result == 1)
 				result = factor_imp(n, info, true);
@@ -751,20 +755,30 @@ namespace zn
 #ifdef _DEBUG
 				smooth_invariant(info, s);
 #endif
+//#define HAVE_MONTGOMERY
 				for (int j = 0; j < size; j++)
 					if (bit_test(info.factors[j].mask, ip))
 					{
 						int sindex = info.smooth_index[j];
 						const smooth_t &s1 = info.smooths[sindex];
+#ifdef HAVE_MONTGOMERY
+						s.axb = info.mul.mul(s.axb, s1.axb);
+						s.sqr = info.mul.mul(s.sqr, s1.sqr);
+#else
 						s.axb = mul_mod(s.axb, s1.axb, info.n);
 						s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
+#endif
 						factors_t common = s.factors;
 						common &= s1.factors;
 						int common_bits = msb(common);
 						s.factors ^= s1.factors;
 						for (int k = 0; k <= common_bits; k++)
 							if (bit_test(common, k))
+#ifdef HAVE_MONTGOMERY
+								s.sqr = info.mul.mul(s.sqr, info.factors[k].value);
+#else
 								s.sqr = mul_mod<large_int>(s.sqr, info.factors[k].value, info.n);
+#endif
 #ifdef _DEBUG
 						smooth_invariant(info, s);
 #endif
@@ -1161,6 +1175,11 @@ namespace zn
 			}
 			return x == 1;
 		}
+		static bool fermat_test_montgomery(const large_int& n)
+		{
+			montgomery_t<large_int> mg(n);
+			return mg.power(228, n - 1) == 1;
+		}
 		static bool fermat_test_montg(const large_int &n)
 		{
 			large_int nm1 = n - 1;
@@ -1448,16 +1467,34 @@ namespace zn
 			std::cout << "FExamined = " << examined << ", errors = " << errors << "\n";
 			return examined;
 		}
-		static int fermat_prime_test_montag(const std::vector<input_item_t> &items, int count)
+		static int fermat_prime_test_montag(const std::vector<input_item_t>& items, int count)
 		{
 			int examined = 0;
 			int errors = 0;
-			for (const auto &item : items)
+			for (const auto& item : items)
 			{
 				examined++;
 				if (examined % 1000 == 0)
 					std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
 				bool prime = fermat_test_montg(item.n);
+				if (prime != item.declared_prime)
+					errors++;
+				if (count && examined >= count)
+					break;
+			}
+			std::cout << "FExamined = " << examined << ", errors = " << errors << "\n";
+			return examined;
+		}
+		static int fermat_prime_test_montgomery(const std::vector<input_item_t>& items, int count)
+		{
+			int examined = 0;
+			int errors = 0;
+			for (const auto& item : items)
+			{
+				examined++;
+				if (examined % 1000 == 0)
+					std::cout << "Processing " << (examined / (items.size() / 100)) << "%\r" << std::flush;
+				bool prime = fermat_test_montgomery(item.n);
 				if (prime != item.declared_prime)
 					errors++;
 				if (count && examined >= count)
@@ -1517,6 +1554,9 @@ namespace zn
 			case 71:
 				examined = fermat_prime_test_montag(items, info.count);
 				break;
+			case 72:
+				examined = fermat_prime_test_montgomery(items, info.count);
+				break;
 			}
 			auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start).count();
 			std::cout << "Average iteration time = " << elapsed / examined << "us\n";
@@ -1562,9 +1602,9 @@ int main(int argc, char *argv[])
 		else if (strcmp(argv[i], "--use-long") == 0)
 			use_cppint = false;
 	if (info.file)
-		if (use_cppint)
+	/*	if (use_cppint)
 			zn::prime_tester_t<boost::multiprecision::cpp_int, long long>::process(info);
-		else
+		else*/
 			zn::prime_tester_t<long long, long>::process(info);
 	else
 		std::cout << "no file specified\n";
