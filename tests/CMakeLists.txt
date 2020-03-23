@@ -8,7 +8,8 @@ set (COMMON_HEADERS ../include/znbasic.h ../include/zngroup.h ../include/znlinea
 				  ../include/znpolynomial.h ../include/znmpqs.h ../include/znsiqs.h 
 				  ../include/znqueue.h ../include/znelliptic_curve_fact.h)
 set (SMALL_HEADERS ../include/basic.h ../include/zneratosthenes_sieve.h 
-                   ../include/znelliptic_curve_fact.h)
+                   ../include/znelliptic_curve_fact.h ../include/znmultiplier.h
+				   ../include/znqssmall.h)
 include_directories(../include)
 set (EXECUTABLE_OUTPUT_PATH ../bin)
 
