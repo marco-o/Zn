@@ -21,6 +21,7 @@
 #include "znlinear_solver.h"
 #include "znpolynomial.h"
 #include "znelliptic_curve_fact.h"
+#include "znmultiplier.h"
 
 namespace zn
 {
@@ -406,7 +407,8 @@ namespace zn
 						auto &file = test_file();
 						file << reminder;
 #endif
-						if (!custom_prime_test(reminder))
+
+						if (!simplest_prime_test(reminder))
 						{
 #ifdef HAVE_FACTORIZATION_TEST
 							file << " c ";
@@ -433,7 +435,7 @@ namespace zn
 #ifdef HAVE_FACTORIZATION_TEST
 						else
 							file << " p";
-						file << "\n";
+						file << std::endl;
 #endif
 					}
 				}
@@ -555,6 +557,18 @@ namespace zn
 					s1 = -s1;
 				s1 = (s1 - axb * axb) % n;
 				return s1 == 0;
+			}
+			bool simplest_prime_test(const large_int& n)
+			{
+				auto b = msb(n);
+				if (b > 62)
+					return true; // do not deal with so big numbers
+				else
+				{
+					small_int ns = static_cast<small_int>(n);
+					montgomery_t<small_int> m(ns);
+					return m.power(228, ns - 1) == 1; // simplest fermat test
+				}
 			}
 			bool custom_prime_test(const large_int &n)
 			{

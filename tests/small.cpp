@@ -47,8 +47,8 @@ namespace zn
 		template <class large_int, class small_int>
 		void report(const large_int & n, const small_int &p)
 		{
-			if (p == 1)
-				std::cout << "\t" << n << std::endl;
+			//if (p == 1)
+			//	std::cout << "\t" << n << std::endl;
 		}
 		void resume(void)
 		{
@@ -755,7 +755,7 @@ namespace zn
 #ifdef _DEBUG
 				smooth_invariant(info, s);
 #endif
-//#define HAVE_MONTGOMERY
+#define HAVE_MONTGOMERY
 				for (int j = 0; j < size; j++)
 					if (bit_test(info.factors[j].mask, ip))
 					{
@@ -1497,6 +1497,7 @@ namespace zn
 				bool prime = fermat_test_montgomery(item.n);
 				if (prime != item.declared_prime)
 					errors++;
+				std::cout << item.n << " " << (prime ? "p\n" : "c\n");
 				if (count && examined >= count)
 					break;
 			}
