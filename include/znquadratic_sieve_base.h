@@ -123,7 +123,7 @@ namespace zn
 				{
 					small_int n1 = safe_cast<small_int>(n % prime_pwr);
 					small_int residue = quadratic_residue<small_int>(n1, prime_pwr, prime1); // actually a power of prime
-					if (residue == 0)
+					if ((residue == 0) && (n1 != 0)) // can be 0 when a multiplier is employed
 						break;
 					result.prime_.push_back(prime_pwr);
 					if (residue > prime_pwr / 2)

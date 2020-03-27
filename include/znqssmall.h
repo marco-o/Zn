@@ -247,7 +247,7 @@ namespace zn
 		interpolator_t m2_int = { 800.0f, 40.0f };
 	};
 	// A quadratic sieve class for factoring numbers up to (about) 19 (2^63) digits
-	template <class stat_t = stats_t, class large_int = long long, class small_int = int>
+	template <class stat_t = stats_none_t, class large_int = long long, class small_int = int>
 	class quadratic_sieve_cached_t
 	{
 	public:
@@ -366,10 +366,13 @@ namespace zn
 			factors_t	mask;
 			factor_info_t(int v) : value(v), mask(0) {}
 		};
+#define HAVE_MONTGOMERY
 		struct info_t
 		{
+#ifdef HAVE_MONTGOMERY
 			typedef montgomery_t<large_int> multiplier_t;
 			multiplier_t				 mul;
+#endif
 			large_int					 n;
 			int							 multi; // multiplier, most times 1
 			std::vector<const prime_t*> base;
@@ -408,7 +411,6 @@ namespace zn
 		}
 		small_int factor(const large_int& n, info_t& info) const
 		{
-			info.mul.init(n);
 			small_int result = factor_imp(n, info, false);
 			if (result == 1)
 				result = factor_imp(n, info, true);
@@ -430,8 +432,10 @@ namespace zn
 #endif
 			for (const auto& poly_seed : info.poly)
 			{
-				stats_.polynomials();
 				poly_t poly = create_poly(info, poly_seed);
+				if (poly.b == 0 && poly.a > 1)
+					continue;
+				stats_.polynomials();
 				info.values.resize(poly.m * 2);
 				std::fill(info.values.begin(), info.values.end(), 0);
 				sieve(poly, info);
@@ -501,6 +505,7 @@ namespace zn
 				info.n = n;
 				info.multi = 1;
 			}
+			info.mul.init(info.n);
 			int bits = msb(info.n);
 			info.config.base_size = interpolate(info.config.base_int, bits);
 			info.config.m2 = interpolate(info.config.m2_int, bits);
@@ -734,7 +739,6 @@ namespace zn
 #ifdef _DEBUG
 				smooth_invariant(info, s);
 #endif
-#define HAVE_MONTGOMERY
 				for (int j = 0; j < size; j++)
 					if (bit_test(info.factors[j].mask, ip))
 					{
@@ -758,6 +762,7 @@ namespace zn
 #else
 								s.sqr = mul_mod<large_int>(s.sqr, info.factors[k].value, info.n);
 #endif
+
 #ifdef _DEBUG
 						smooth_invariant(info, s);
 #endif
@@ -821,7 +826,7 @@ namespace zn
 					q2 = mul_mod<large_int>(q2, info.factors[index].value, info.n);
 			large_int r = (q1 - q2) % info.n;
 			if (r)
-				std::cout << "Hmmm\n";
+				std::cout << "Hmmm: " << info.n << ", " << info.multi << "\n";
 		}
 		void remove_unused_smooths(info_t& info, small_int& smooths_size) const
 		{
@@ -1033,50 +1038,6 @@ namespace zn
 					return mul_t<uint64_t>::mod(-x, -y, m);
 		}
 	};
-	uint64_t mul_modu2(const uint64_t& x, const uint32_t& y, const uint64_t& m)
-	{
-		uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32) };
-		uint64_t z0 = x1[0] * y;
-		uint64_t z1 = x1[1] * y;
-		uint64_t z10 = z1 + (z0 >> 32);
-		uint32_t z01 = static_cast<uint32_t>(z0);
-		z10 = z10 % m;
-		z10 = ((z10 << 16) + (z01 >> 16)) % m;
-		z10 = ((z10 << 16) + (z01 & 0xFFFF)) % m;
-		return z10;
-	}
-
-
-	uint64_t mul_modu(const uint64_t& x, const uint64_t& y, const uint64_t& m)
-	{
-		uint32_t x1[2] = { (uint32_t)x, (uint32_t)(x >> 32) };
-		uint64_t y1[2] = { (uint32_t)y, (uint32_t)(y >> 32) };
-		if (x1[1] == 0 && y1[1] == 0)
-			return x1[0] * y1[0] % m;
-		uint64_t z0 = x1[0] * y1[0];
-		uint64_t z1 = x1[0] * y1[1] + x1[1] * y1[0];
-		uint64_t z00 = z0 + ((z1 & 0xFFFFFFFF) << 32); // overflow here?
-		uint16_t* z01 = (uint16_t*)&z00;
-		uint64_t z2 = x1[1] * y1[1] + (z1 >> 32);
-		if (z00 < z0) // overflow on z00!
-			z2++;
-		z2 = z2 % m;
-		z2 = ((z2 << 16) + z01[3]) % m;
-		z2 = ((z2 << 16) + z01[2]) % m;
-		z2 = ((z2 << 16) + z01[1]) % m;
-		z2 = ((z2 << 16) + z01[0]) % m;
-		return z2;
-	}
-	/*
-	int64_t mul_mod(int64_t x, int64_t y, const int64_t &m)
-	{
-		if (x < 0)
-			x += m;
-		if (y < 0)
-			y += m;
-		return mul_modu(x, y, m);
-	}
-	*/
 
 }
 #endif

@@ -57,6 +57,7 @@ private:
 #define DBG_SIEVE_TRACE		5
 #ifdef _DEBUG
 #define DBG_SIEVE			DBG_SIEVE_TRACE
+#define HAVE_FACTORIZATION_TEST
 #else
 #define DBG_SIEVE			DBG_SIEVE_INFO
 #endif
@@ -64,7 +65,6 @@ private:
 
 //#define HAVE_THREADING // option moved on run-time on SIQS
 
-#define HAVE_FACTORIZATION_TEST
 #define HAVE_CANDIDATE_ANALYSYS
 #define HAVE_DOUBLE_LARGE_PRIME
 #define HAVE_TIMING

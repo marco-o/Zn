@@ -21,7 +21,7 @@
 #include "znlinear_solver.h"
 #include "znpolynomial.h"
 #include "znelliptic_curve_fact.h"
-#include "znmultiplier.h"
+#include "znqssmall.h"
 
 namespace zn
 {
@@ -33,7 +33,7 @@ namespace zn
 	public:
 		typedef unsigned int value_type;
 		typedef long long temp_type;
-		trial_division_t(const large_int &n)
+		trial_division_t(const large_int& n)
 		{
 			boost::multiprecision::export_bits(n, std::back_inserter(value_), 32, false);
 			temp_ = value_;
@@ -48,9 +48,10 @@ namespace zn
 			switch (value_.size())
 			{
 			case 1:
-				return value_[0] ;
+				return value_[0];
 			case 2:
-				return ((static_cast<temp_type>(value_[1]) << 32) + value_[0]) ;
+				if ((value_[1] & 0x80000000) == 0)
+					return ((static_cast<temp_type>(value_[1]) << 32) + value_[0]);
 			default:
 				break;
 			}
@@ -80,6 +81,7 @@ namespace zn
 		std::vector<value_type> temp_;
 		int order_;
 	};
+
 	struct analysis_t
 	{
 		std::atomic<int> smooth_attempts = 0;
@@ -102,6 +104,49 @@ namespace zn
 		typedef int color_t;
 		typedef typename smooth_t::small_int small_int;
 		typedef typename smooth_t::large_int large_int;
+		class bit_hist_t
+		{
+		public:
+			enum { count_e = 64 };
+			bit_hist_t(void)
+			{
+				for (int i = 0; i < count_e; i++)
+					hist_[i] = 0;
+			}
+			~bit_hist_t(void)
+			{
+				dump();
+			}
+			void insert(smooth_t& smooth)
+			{
+				insert(smooth.factor(0));
+				insert(smooth.factor(1));
+			}
+			void insert(small_int n)
+			{
+				int bit = msb(n);
+				if (bit < count_e)
+					hist_[bit]++;
+			}
+			void dump(void)
+			{
+				std::cout << std::endl;
+				int begin, end;
+				for (begin = 1; begin < count_e; begin++)
+					if (hist_[begin])
+						break;
+				for (end = count_e - 1; end > begin ; end--)
+					if (hist_[end])
+						break;
+				std::ostringstream ost;
+				ost << begin << ": ";
+				for (int i = begin; i <= end; i++)
+					ost << hist_[i] << " ";
+				LOG_INFO << ost.str() << "\n" ;
+			}
+		private:
+			int hist_[count_e];
+		};
 		struct vertex_t
 		{
 			color_t				color = 0; // of connected components
@@ -124,6 +169,7 @@ namespace zn
 		bool add_smooth(smooth_t &smooth, const std::vector<base_ref_t> &base)
 		{
 			// for single large prime factor(1) is 1
+			hist_.insert(smooth);
 			auto it0 = vertexes_.insert(std::make_pair(smooth.factor(0), vertex_t())).first;
 			auto it1 = vertexes_.insert(std::make_pair(smooth.factor(1), vertex_t())).first;
 
@@ -150,7 +196,7 @@ namespace zn
 							connected_.erase(cit0);
 							merge_connected_as(it0, cit1, it1->second.dist + 1);
 							if (cit1->second != expected)
-								std::cout << "Hmm\n";
+								std::cout << "Hmmx\n";
 						}
 						else
 						{
@@ -158,7 +204,7 @@ namespace zn
 							connected_.erase(cit1);
 							merge_connected_as(it1, cit0, it0->second.dist + 1);
 							if (cit0->second != expected)
-								std::cout << "Hmm\n";
+								std::cout << "Hmmy\n";
 						}
 					}
 					else // found a cycle!!
@@ -251,6 +297,7 @@ namespace zn
 		std::map<int, int>		connected_; // maps id of connected components to its size
 		int						color_ = 2; // used to mark connected components
 		large_int				n_;
+		bit_hist_t				hist_;
 	};
 
 	struct sieving_options_t
@@ -277,6 +324,7 @@ namespace zn
         typedef typename inherit_t::smooth_status_e smooth_status_e;
 		typedef polynomial_siqs_t<large_int, small_int> poly_t;
 		typedef sieve_range_t<poly_t, real>				sieve_t;
+		typedef quadratic_sieve_cached_t<> small_prime_factorizer_t;
 		struct smooth_info_t
 		{
 			poly_t		poly;
@@ -289,6 +337,7 @@ namespace zn
 			large_int	n;
 			bool		have_double;
 			std::vector<typename sieve_t::sieve_run_t> runs;
+			mutable small_prime_factorizer_t::info_t qs_cache;
 		};
 		class smooth_t
 		{
@@ -300,7 +349,7 @@ namespace zn
 				large_f[0] = large_f[1] = 1;
 			}
 
-			smooth_t(const smooth_info_t &info, small_int x) : sqr(info.poly.a0), sign_bit(false)
+			smooth_t(const smooth_info_t &info, small_prime_factorizer_t &factorizer, small_int x) : sqr(info.poly.a0), sign_bit(false)
 			{
 				axb = info.poly.a * x + info.poly.b;
 				auto f = info.poly.eval(x);
@@ -329,33 +378,13 @@ namespace zn
 #endif
 						continue;
 					}
-#if 0
-					if (run.p == 17)
-					{
-						std::cout << "p = " << run.p 
-								  << ", a = " << safe_cast<small_int>(info.poly.a % run.p)
-							      << ", b = " << safe_cast<small_int>(info.poly.b % run.p)
-							      << ", c = " << safe_cast<small_int>(info.poly.c % run.p) << "\n";
-						for (int i = 0; i < run.p; i++)
-						{
-							auto f1 = info.poly.eval(i);
-							std::cout << "x = " << i << ", y = " << safe_cast<small_int>(f1 % run.p) << "\n";
-						}
-						std::cout << std::endl;
-					}
-#endif
+
 					int rexp = 0;
 					int power = 0;
-#if 1
 					while (f1.divide(run.p))
 						if (++power % 2 == 0)
 							sqr = (sqr * run.p) % info.n;
-#else
-					large_int p = run.p;
-					while (divide_qr(f, p))
-						if (++power % 2 == 0)
-							sqr = (sqr * p) % info.n;
-#endif
+
 #ifdef _DEBUG
 					if (power == 0)
 						if (run.a)
@@ -386,7 +415,7 @@ namespace zn
 						factors_.push_back(run.bix);
 				}
 				s = inherit_t::smooth_idle_e;
-				small_int reminder = f1.reminder();
+				auto reminder = f1.reminder();
 				if (reminder == 1)
 					s = inherit_t::smooth_valid_e;
 				else if (reminder < info.thrs2)
@@ -413,7 +442,7 @@ namespace zn
 #ifdef HAVE_FACTORIZATION_TEST
 							file << " c ";
 #endif
-							large_f[0] = 1; // safe_cast<small_int>(pollards_rho(reminder, count, 2));
+							large_f[0] = factorizer.factor(static_cast<small_int>(reminder), info.qs_cache);
 							if (large_f[0] > 1)
 							{
 								large_f[1] = safe_cast<small_int>(reminder / large_f[0]);
@@ -428,9 +457,7 @@ namespace zn
 									s = inherit_t::smooth_double_e;
 							}
 							else
-							{
 								s = inherit_t::smooth_unfactored_e;
-							}
 						}
 #ifdef HAVE_FACTORIZATION_TEST
 						else
@@ -639,14 +666,14 @@ namespace zn
 			small_int		  thrs20; // exact square
 			small_int		  thrs3;
 			bool			  have_double;
-			sieve_stuff_t(small_int largest_prime, bool have_dbl)
+			sieve_stuff_t(small_int largest_prime, bool have_dbl) 
 			{
 				have_double = have_dbl;
 				thrs20 = largest_prime * largest_prime;
-				const int div = 8;
+				const int div = 16;
 				thrs2 = thrs20 / div;
-				thrs3 = std::min<small_int>((thrs2 / div) * (largest_prime / div), 1LL << 55);
-				}
+				thrs3 = std::min<small_int>(thrs20 * largest_prime, 1LL << 61);
+			}
 			void compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
 			{
 				if (init.empty())
@@ -954,7 +981,7 @@ namespace zn
 			for (size_t i = 0; i < size; i++)
 				if (sieve.values[i] < sieve_thrs)
 				{   // static cast required, otherwise operation is done on unsigend
-					smooth_t s(info, static_cast<int>(i) - options_.m); 
+					smooth_t s(info, qscached_, static_cast<int>(i) - options_.m); 
 					analysis_.smooth_attempts++;
 					if (s.type() <= inherit_t::smooth_double_e)
 					{
@@ -1064,6 +1091,7 @@ namespace zn
 		shared_list_t<polynomial_seed_t> polynomials_;
 		shared_list_t<smooth_vector_t>   smooths_found_;
 		std::vector<std::thread>	     threads_;
+		small_prime_factorizer_t		 qscached_;
 
 		analysis_t analysis_;
 #ifdef HAVE_TIMING

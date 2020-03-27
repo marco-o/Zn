@@ -30,18 +30,6 @@ using namespace boost::multiprecision;
 #endif
 
 
-template <class large_int>
-void test_td(const large_int &n)
-{
-	zn::trial_division_t<cpp_int> td(n);
-	if (td.divide(2))
-		std::cout << "ok\n";
-	if (td.divide(7))
-		std::cout << "ok\n";
-	if (!td.divide(47))
-		std::cout << "ok\n";
-}
-
 
 using namespace zn ;
 
@@ -319,8 +307,6 @@ int main(int argc, char *argv[])
 				n = argv[i] + 4;
 			else if (strcmp(argv[i], "--qs") == 0)
 				test_quadratic_sieve<long long, long long>(atoll(n), static_cast<int>(base_size));
-			else if (strcmp(argv[i], "--td") == 0)
-				test_td<cpp_int>(cpp_int(n));
 			else if (strcmp(argv[i], "--qsc") == 0)
 				test_quadratic_sieve<cpp_int, long long>(cpp_int(n), base_size);
 			else if (strcmp(argv[i], "--mpqs") == 0)
