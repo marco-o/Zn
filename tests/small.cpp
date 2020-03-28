@@ -28,6 +28,18 @@ stream_t &operator<<(stream_t &stream, const std::vector<int> &v)
 
 namespace zn
 {
+	template <>
+	class montgomery_t<boost::multiprecision::cpp_int>
+	{
+	public:
+		montgomery_t(const boost::multiprecision::cpp_int&) {}
+		int power(const boost::multiprecision::cpp_int&, 
+			      const boost::multiprecision::cpp_int&)
+		{
+			return 1;
+		}
+	};
+
 
 	struct test_info_t
 	{
@@ -427,7 +439,7 @@ namespace zn
 				bool prime = fermat_test_montgomery(item.n);
 				if (prime != item.declared_prime)
 					errors++;
-				std::cout << item.n << " " << (prime ? "p\n" : "c\n");
+				//std::cout << item.n << " " << (prime ? "p\n" : "c\n");
 				if (count && examined >= count)
 					break;
 			}
@@ -533,9 +545,9 @@ int main(int argc, char *argv[])
 		else if (strcmp(argv[i], "--use-long") == 0)
 			use_cppint = false;
 	if (info.file)
-	/*	if (use_cppint)
+		if (use_cppint)
 			zn::prime_tester_t<boost::multiprecision::cpp_int, long long>::process(info);
-		else*/
+		else
 			zn::prime_tester_t<long long, long>::process(info);
 	else
 		std::cout << "no file specified\n";

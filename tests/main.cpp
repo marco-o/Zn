@@ -295,6 +295,8 @@ int main(int argc, char *argv[])
 				options.multiplier = 1 ;
 			else if (strncmp(argv[i], "--multiplier=", 13) == 0)
 				options.multiplier = atoi(argv[i] + 13);
+			else if (strncmp(argv[i], "--min-factor=", 13) == 0)
+				m = options.min_factor = atoi(m1 = argv[i] + 13);
 			else if (strncmp(argv[i], "--m=", 4) == 0)
 				m = options.m = atoi(m1 = argv[i] + 4);
 			else if (strcmp(argv[i], "--double") == 0)

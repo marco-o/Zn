@@ -127,7 +127,7 @@ namespace zn
 		large_int c;
 		small_int x1;
 		small_int x2;
-
+		polynomial_siqs_t(void) {}
 		polynomial_siqs_t(const std::vector<int> &idx,
 						  const std::vector<prime_info_t<small_int>> &primes, // product of g gives a
 						  const large_int &n)

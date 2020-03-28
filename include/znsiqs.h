@@ -23,6 +23,8 @@
 #include "znelliptic_curve_fact.h"
 #include "znqssmall.h"
 
+//#define HAVE_POLY_STAT
+
 namespace zn
 {
 	bool rb_test(const boost::multiprecision::cpp_int &);
@@ -90,6 +92,7 @@ namespace zn
 		std::atomic<int> promoted = 0;
 		std::atomic<int> partial_promoted = 0;
 		std::atomic<int> direct = 0;
+		std::atomic<int> polynomials = 0;
 		std::atomic<int> smooth_large_composite = 0;
 		std::atomic<int> smooth_unfactored = 0;
 		std::atomic<int> smooth_huge_prime = 0;
@@ -196,7 +199,7 @@ namespace zn
 							connected_.erase(cit0);
 							merge_connected_as(it0, cit1, it1->second.dist + 1);
 							if (cit1->second != expected)
-								std::cout << "Hmmx\n";
+								LOG_DEBUG << "Hmmx\n";
 						}
 						else
 						{
@@ -204,7 +207,7 @@ namespace zn
 							connected_.erase(cit1);
 							merge_connected_as(it1, cit0, it0->second.dist + 1);
 							if (cit0->second != expected)
-								std::cout << "Hmmy\n";
+								LOG_DEBUG << "Hmmy\n";
 						}
 					}
 					else // found a cycle!!
@@ -303,6 +306,7 @@ namespace zn
 	struct sieving_options_t
 	{
 		int order = 0; // number of factors osf 'a'
+		int min_factor = 2; // minimum factor for 'a'
 		int base_size = 0; // number of primes in the factoring base
 		int multiplier = 0; // this forces the search for one, 1 avoids it
 		bool have_double = false; // use partial-partial relations
@@ -327,7 +331,6 @@ namespace zn
 		typedef quadratic_sieve_cached_t<> small_prime_factorizer_t;
 		struct smooth_info_t
 		{
-			poly_t		poly;
 			small_int	thrs2;	// Candidate threshold for large primes
 								// smaller than maximum (see thrs20 below)
 			small_int	thrs20; // square of largest prime in base.
@@ -336,6 +339,7 @@ namespace zn
 			                   // higher in case of double large prime used
 			large_int	n;
 			bool		have_double;
+			poly_t		poly;
 			std::vector<typename sieve_t::sieve_run_t> runs;
 			mutable small_prime_factorizer_t::info_t qs_cache;
 		};
@@ -729,11 +733,12 @@ namespace zn
 			smooth_vector_t smooths;
 			std::vector<prime_info_t<small_int>> base_info;
 			for (auto &item : base_)
-				if (item.powers() > 1)
+				if ((item.powers() > 1) && (item.prime(0) > options_.min_factor))
 					base_info.push_back(prime_info_t<small_int>{item.prime(0), item.prime(1), item.residue(1)});
 			polynomial_generator_t<large_int, small_int> generator(n_, options_.m, base_info);
 			if (options_.order > 0)
 				generator.order_init(options_.order);
+			generator(); //initialize generators
 			LOG_INFO << "Factors of 'a' = " << generator.order() << log_base_t::newline_t();
 #ifdef HAVE_TIMING
 			time_estimator_t time_estimator(base_.size());
@@ -747,6 +752,7 @@ namespace zn
 					threads_.emplace_back(&self_initializing_quadratic_sieve_t::sieving_thread, this, std::ref(base_info));
 					polynomials_.push(generator());
 					polynomials_.push(generator());
+					polynomials_.push(generator());
 				}
 			else
 			{
@@ -756,6 +762,7 @@ namespace zn
 
 			int count = 0;
 			size_t actual_bsize = 0;
+			smooth_info_t info = { sieve_stuff.thrs2, sieve_stuff.thrs20, sieve_stuff.thrs3, n_, sieve_stuff.have_double };
 			while (smooths.size() < actual_bsize + 5 + actual_bsize / 100)
 			{
 				std::vector<smooth_t> chunk;
@@ -767,8 +774,8 @@ namespace zn
 				else
 				{
 					auto seed = generator();
-					polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
-					chunk = sieve(poly, sieve_stuff);
+					info.poly = polynomial_siqs_t<large_int, small_int>(seed.index, base_info, n_);
+					chunk = sieve(info, sieve_stuff);
 				}
 				process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				count++;
@@ -800,6 +807,7 @@ namespace zn
 				}
 			}
 			LOG_INFO << log_base_t::newline_t()
+			         << "Polynomial " << analysis_.polynomials / static_cast<double>(base_.size())<< "\n"
 			         << "Attempted  " << analysis_.smooth_attempts << "\n"
 				     << "Direct     " << analysis_.direct << "\n"
 					 << "Promoted   " << analysis_.promoted << "\n"
@@ -822,7 +830,7 @@ namespace zn
 #ifdef HAVE_CANDIDATE_ANALYSYS1
 			inherit_t::print_analysis(base_.rbegin()->prime(0));
 #endif
-#ifdef _DEBUG
+#ifdef HAVE_POLY_STAT
 			for (auto s : poly_stat_)
 				LOG_INFO << "\t" << s / static_cast<double>(poly_count_) << log_base_t::newline_t();
 #endif
@@ -868,19 +876,18 @@ namespace zn
 			log_time("Final");
 			return r;
 		}
-		smooth_vector_t sieve(const polynomial_siqs_t<large_int, small_int> &poly,
-							  sieve_stuff_t &sieve_stuff)
+		smooth_vector_t sieve(smooth_info_t &info, sieve_stuff_t &sieve_stuff)
 		{
 			// build vector for sieving
 			smooth_vector_t result;
-			smooth_info_t info = { poly, sieve_stuff.thrs2, sieve_stuff.thrs20, sieve_stuff.thrs3, n_, sieve_stuff.have_double};
-			info.runs.reserve(base_.size() * 2);
+			info.runs.clear();
 			size_t count = info.poly.count();
-#ifdef _DEBUG
+#ifdef HAVE_POLY_STAT
 			if (poly_stat_.empty())
 				poly_stat_.resize(count);
 			poly_count_++;
 #endif
+			analysis_.polynomials++;
 			std::vector<typename sieve_t::sieve_run_t>::iterator begin, end;
 			for (size_t c = 0; c < count; c++)
 			{
@@ -902,40 +909,39 @@ namespace zn
 				auto it = begin;
 #if 1
 				const int loop_unroll = 4;
-				for (; it != end; ++it)
-				{
-					auto &run = *it;
-					int index0 = static_cast<int>((options_.m + run.x[0]) % run.p);
-					int index1 = static_cast<int>((options_.m + run.x[1]) % run.p);
-					int indexmin = std::min(index0, index1);
-					int indexmax = std::max(index0, index1);
-					int loops = static_cast<int>((size - indexmax) / run.p) - loop_unroll + 1;
-					if (loops < loop_unroll * 2)
-						break;
-					int delta0 = indexmax - indexmin;
-					int delta1 = static_cast<int>(run.p) - delta0;
-					real *v = &sieve_stuff.values[0] + indexmin;
-					for (int i = 0; i < loops; i += 4)
+				if (end - begin > 2 * loop_unroll * it->p)
+					for (; it != end; ++it)
 					{
-						v[0] -= run.lg; v += delta0;
-						v[0] -= run.lg;	v += delta1;
-						v[0] -= run.lg; v += delta0;
-						v[0] -= run.lg;	v += delta1;
-						v[0] -= run.lg; v += delta0;
-						v[0] -= run.lg;	v += delta1;
-						v[0] -= run.lg; v += delta0;
-						v[0] -= run.lg;	v += delta1;
+						auto &run = *it;
+						int index0 = static_cast<int>((options_.m + run.x[0]) % run.p);
+						int index1 = static_cast<int>((options_.m + run.x[1]) % run.p);
+						int indexmin = std::min(index0, index1);
+						int indexmax = std::max(index0, index1);
+						int loops = static_cast<int>((size - indexmax) / run.p) - loop_unroll + 1;
+						int delta0 = indexmax - indexmin;
+						int delta1 = static_cast<int>(run.p) - delta0;
+						real *v = &sieve_stuff.values[0] + indexmin;
+						for (int i = 0; i < loops; i += loop_unroll)
+						{
+							v[0] -= run.lg; v += delta0;
+							v[0] -= run.lg;	v += delta1;
+							v[0] -= run.lg; v += delta0;
+							v[0] -= run.lg;	v += delta1;
+							v[0] -= run.lg; v += delta0;
+							v[0] -= run.lg;	v += delta1;
+							v[0] -= run.lg; v += delta0;
+							v[0] -= run.lg;	v += delta1;
+						}
+						int i = static_cast<int>(v - &sieve_stuff.values[0]);
+						int size1 = static_cast<int>(size) - delta0;
+						for (; i < size1; i += static_cast<int>(run.p))
+						{
+							sieve_stuff.values[i] -= run.lg;
+							sieve_stuff.values[i + delta0] -= run.lg;
+						}
+						if (i < static_cast<int>(size))
+							sieve_stuff.values[i] -= run.lg;
 					}
-					int i = static_cast<int>(v - &sieve_stuff.values[0]);
-					int size1 = static_cast<int>(size) - delta0;
-					for (; i < size1; i += static_cast<int>(run.p))
-					{
-						sieve_stuff.values[i] -= run.lg;
-						sieve_stuff.values[i + delta0] -= run.lg;
-					}
-					if (i < static_cast<int>(size))
-						sieve_stuff.values[i] -= run.lg;
-				}
 #endif
 				for (; it != end; ++it)
 				{
@@ -955,11 +961,11 @@ namespace zn
 					if (i < static_cast<int>(size))
 						sieve_stuff.values[i] -= run.lg;
 				}
-#ifdef _DEBUG
+#ifdef HAVE_POLY_STAT
 				size_t prev = result.size();
 #endif
 				collect_smooth(info, sieve_stuff, result);
-#ifdef _DEBUG
+#ifdef HAVE_POLY_STAT
 				poly_stat_[c] += result.size() - prev;
 #endif
 			}
@@ -976,7 +982,6 @@ namespace zn
 				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
 			if (options_.sieve_bias)
 				sieve_thrs = static_cast<real>(sieve_thrs + options_.sieve_bias);
-
 			size_t size = sieve.values.size();
 			for (size_t i = 0; i < size; i++)
 				if (sieve.values[i] < sieve_thrs)
@@ -987,7 +992,7 @@ namespace zn
 					{
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
 						if (!s.invariant(n_, base_))
-							std::cout << "Hm\n";
+							LOG_DEBUG << "Hm\n";
 #endif // DBG_SIEVE	
 						if (s.type() == smooth_double_e)
 							analysis_.smooth_large_composite++;
@@ -1021,17 +1026,19 @@ namespace zn
 			sieve_stuff_t sieve_stuff(base_.rbegin()->prime(0), options_.have_double);
 			try
 			{
+				polynomial_siqs_t<large_int, small_int> temp(polynomials_.pop().index, base_info, n_);
+				sieve_stuff.compute(temp, options_.m);
+				smooth_info_t info = { sieve_stuff.thrs2, sieve_stuff.thrs20, sieve_stuff.thrs3, n_, sieve_stuff.have_double };
 				for (auto seed = polynomials_.pop(); !seed.is_null(); seed = polynomials_.pop())
 				{
-					polynomial_siqs_t<large_int, small_int> poly(seed.index, base_info, n_);
-					sieve_stuff.compute(poly, options_.m);
-					auto chunk = sieve(poly, sieve_stuff);
+					info.poly = polynomial_siqs_t<large_int, small_int>(seed.index, base_info, n_);
+					auto chunk = sieve(info, sieve_stuff);
 					smooths_found_.push(chunk);
 				}
 			}
 			catch (std::exception &exc)
 			{
-				std::cout << "Exception in thread: " << exc.what() << std::endl;
+				LOG_ERROR << "Exception in thread: " << exc.what() ;
 			}
 		}
 		void process_candidates_chunk(std::vector<base_ref_t> &base,
@@ -1083,7 +1090,7 @@ namespace zn
 #endif
 		large_int					n_; // number to factor
 		std::vector<base_ref_t>		base_;
-#ifdef _DEBUG
+#ifdef HAVE_POLY_STAT
 		std::vector<size_t> poly_stat_;
 		int					poly_count_ = 0;
 #endif
