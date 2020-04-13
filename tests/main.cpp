@@ -31,7 +31,7 @@ using namespace boost::multiprecision;
 
 
 
-using namespace zn ;
+using namespace zn;
 
 template <class large_int, class small_int = int>
 void test_quadratic_sieve(const large_int &n, small_int base_size)

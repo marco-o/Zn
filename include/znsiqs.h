@@ -23,6 +23,15 @@
 #include "znelliptic_curve_fact.h"
 #include "znqssmall.h"
 
+#if defined(__GNUC__) && __GNUC__ >= 3
+#define PREFETCH(addr) __builtin_prefetch(addr) 
+#elif defined(_MSC_VER) && _MSC_VER >= 1400
+#include <Windows.h>
+#include <intrin.h>
+#define PREFETCH(addr) PreFetchCacheLine(PF_TEMPORAL_LEVEL_1, addr)
+#else
+#define PREFETCH(addr) /* nothing */
+#endif
 //#define HAVE_POLY_STAT
 
 namespace zn
@@ -983,43 +992,58 @@ namespace zn
 			if (options_.sieve_bias)
 				sieve_thrs = static_cast<real>(sieve_thrs + options_.sieve_bias);
 			size_t size = sieve.values.size();
-			for (size_t i = 0; i < size; i++)
-				if (sieve.values[i] < sieve_thrs)
-				{   // static cast required, otherwise operation is done on unsigend
-					smooth_t s(info, qscached_, static_cast<int>(i) - options_.m); 
-					analysis_.smooth_attempts++;
-					if (s.type() <= inherit_t::smooth_double_e)
-					{
+			size_t size0 = sieve.values.size() / 16;
+			__m128i avx_thrs = _mm_set1_epi8(sieve_thrs);
+			__m128i mzero = _mm_set1_epi8(0);
+			__m128i* values = (__m128i*) & sieve.values[0];
+			for (size_t i0 = 0; i0 < size0; i0++)
+			{
+				PREFETCH(values + 1);
+				__m128i cmp = _mm_cmpgt_epi8(avx_thrs, values[i0]);
+				if (cmp.m128i_u64[0] | cmp.m128i_u64[1])
+				{
+					size_t i1 = i0 * 16;
+					size_t i2 = i1 + 16;
+					for (size_t i = i1; i < i2; i++)
+						if (sieve.values[i] < sieve_thrs)
+						{   // static cast required, otherwise operation is done on unsigend
+							smooth_t s(info, qscached_, static_cast<int>(i) - options_.m);
+							analysis_.smooth_attempts++;
+							if (s.type() <= inherit_t::smooth_double_e)
+							{
 #if DBG_SIEVE >= DBG_SIEVE_DEBUG
-						if (!s.invariant(n_, base_))
-							LOG_DEBUG << "Hm\n";
+								if (!s.invariant(n_, base_))
+									LOG_DEBUG << "Hm\n";
 #endif // DBG_SIEVE	
-						if (s.type() == smooth_double_e)
-							analysis_.smooth_large_composite++;
-						result.push_back(s);
-					}
-					else
-					{
-						switch (s.type())
-						{
-						case smooth_prime_unused_e:
-							analysis_.smooth_prime_unused++;
-							break;
-						case smooth_unfactored_e:
-							analysis_.smooth_unfactored++;
-							break;
-						case smooth_huge_prime_e:
-							analysis_.smooth_huge_prime++;
-							break;
-						case smooth_huge_composite_e:
-							analysis_.smooth_huge_composite++;
-							break;
-						default:
-							analysis_.smooth_idle++;
-							break;
+								if (s.type() == smooth_double_e)
+									analysis_.smooth_large_composite++;
+								result.push_back(s);
+							}
+							else
+							{
+								switch (s.type())
+								{
+								case smooth_prime_unused_e:
+									analysis_.smooth_prime_unused++;
+									break;
+								case smooth_unfactored_e:
+									analysis_.smooth_unfactored++;
+									break;
+								case smooth_huge_prime_e:
+									analysis_.smooth_huge_prime++;
+									break;
+								case smooth_huge_composite_e:
+									analysis_.smooth_huge_composite++;
+									break;
+								default:
+									analysis_.smooth_idle++;
+									break;
+								}
+							}
 						}
-					}
+
 				}
+			}
 		}
 		void sieving_thread(const std::vector<prime_info_t<small_int>> &base_info)
 		{
