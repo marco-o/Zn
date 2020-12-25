@@ -107,15 +107,15 @@ namespace zn
 	public:
 		typedef typename T signed_type;
 		typedef typename std::make_unsigned<T>::type unsigned_type;
-		montgomery_t(signed_type n = 65537) 
-		{
-			init(n);
-		}
-		void init(signed_type n)
+		montgomery_t(signed_type n = 65537)
 		{
 			n_ = n;
 			n1_ = montgomery_inverse(n);
 			r2_ = compute_r2(n_);
+		}
+		unsigned_type project(unsigned_type a)
+		{
+			return prod(r2_, a);
 		}
 		unsigned_type mul(signed_type a, signed_type b)
 		{
@@ -134,16 +134,21 @@ namespace zn
 		{
 			return unred(prod(a, b));
 		}
+		unsigned_type mul_alt(unsigned_type a, unsigned_type b)
+		{
+			return prod(prod(project(a), project(b)), 1);
+		}
 		unsigned_type power(unsigned_type base, unsigned_type exp)
 		{
-			unsigned_type result = 1;
+			unsigned_type result1 = project(1);
+			unsigned_type base1 = project(base);
 			for (; exp; exp >>= 1)
 			{
 				if (exp & 1)
-					result = mul(result, base);
-				base = mul(base, base);
+					result1 = prod(result1, base1);
+				base1 = prod(base1, base1);
 			}
-			return result;
+			return prod(result1, 1);
 		}
 	private:
 		unsigned_type unred(unsigned_type t) // computes tR^-1 mod n
@@ -208,6 +213,7 @@ namespace zn
 		unsigned_type n1_;
 		unsigned_type r2_; //R^2 MOD n
 	};
+
 
 
 #ifdef HAVE_INTRINSIC

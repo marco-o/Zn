@@ -914,7 +914,7 @@ namespace zn
 					sieve_t::update_run(info.poly, info.runs);
 
 				sieve_stuff.values = sieve_stuff.init;
-				size_t size = sieve_stuff.values.size();
+				int size = static_cast<int>(sieve_stuff.values.size());
 				auto it = begin;
 #if 1
 				const int loop_unroll = 4;
@@ -922,8 +922,9 @@ namespace zn
 					for (; it != end; ++it)
 					{
 						auto &run = *it;
-						int index0 = static_cast<int>((options_.m + run.x[0]) % run.p);
-						int index1 = static_cast<int>((options_.m + run.x[1]) % run.p);
+						auto m1 = options_.m + run.p;
+						int index0 = static_cast<int>((m1 + run.x[0]) % run.p);
+						int index1 = static_cast<int>((m1 + run.x[1]) % run.p);
 						int indexmin = std::min(index0, index1);
 						int indexmax = std::max(index0, index1);
 						int loops = static_cast<int>((size - indexmax) / run.p) - loop_unroll + 1;
@@ -952,23 +953,35 @@ namespace zn
 							sieve_stuff.values[i] -= run.lg;
 					}
 #endif
+				real* values = &sieve_stuff.values[0];
 				for (; it != end; ++it)
 				{
 					auto &run = *it;
 					small_int m1 = options_.m + run.p;
 					int index0 = static_cast<int>((m1 + run.x[0]) % run.p);
 					int index1 = static_cast<int>((m1 + run.x[1]) % run.p);
-					int index = std::min(index0, index1);
-					int delta = std::max(index0, index1) - index;
-					int size1 = static_cast<int>(size) - delta;
-					int i = index;
-					for (; i < size1; i += static_cast<int>(run.p))
+					if (index0 < index1)
 					{
-						sieve_stuff.values[i] -= run.lg;
-						sieve_stuff.values[i + delta] -= run.lg;
+						int delta = index1 - index0;
+						for (; index1 < size; index1 += run.p)
+						{
+							values[index1] -= run.lg;
+							values[index1 - delta] -= run.lg;
+						}
+						if (index1 - delta < size)
+							values[index1 - delta] -= run.lg;
 					}
-					if (i < static_cast<int>(size))
-						sieve_stuff.values[i] -= run.lg;
+					else
+					{
+						int delta = index0 - index1;
+						for (; index0 < size; index0 += run.p)
+						{
+							values[index0] -= run.lg;
+							values[index0 - delta] -= run.lg;
+						}
+						if (index0 - delta < size)
+							values[index0 - delta] -= run.lg;
+					}
 				}
 #ifdef HAVE_POLY_STAT
 				size_t prev = result.size();
