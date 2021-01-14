@@ -190,8 +190,8 @@ int main(int argc, char* argv[])
 {
 	std::vector<std::int64_t> primes = zn::eratosthenes_sieve<std::int64_t>(4000);
 	
-	trivial_test<std::int64_t, true>("alt = ", primes);
 	trivial_test<std::int64_t, false>("mul = ", primes);
+	trivial_test<std::int64_t, true>("alt = ", primes);
 	simple_test<std::int64_t>(primes);
 	simple_test<std::int32_t>(primes);
 

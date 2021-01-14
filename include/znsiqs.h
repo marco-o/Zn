@@ -33,6 +33,7 @@
 #define PREFETCH(addr) /* nothing */
 #endif
 //#define HAVE_POLY_STAT
+#define HAVE_SMHIST
 
 namespace zn
 {
@@ -120,7 +121,7 @@ namespace zn
 		{
 		public:
 			enum { count_e = 64 };
-			bit_hist_t(void)
+			bit_hist_t(const char *tag) : tag_(tag)
 			{
 				for (int i = 0; i < count_e; i++)
 					hist_[i] = 0;
@@ -151,12 +152,13 @@ namespace zn
 					if (hist_[end])
 						break;
 				std::ostringstream ost;
-				ost << begin << ": ";
+				ost << tag_ << " " << begin << ": ";
 				for (int i = begin; i <= end; i++)
 					ost << hist_[i] << " ";
-				LOG_INFO << ost.str() << "\n" ;
+				LOG_INFO << ost.str() ;
 			}
 		private:
+			const char* tag_;
 			int hist_[count_e];
 		};
 		struct vertex_t
@@ -169,7 +171,7 @@ namespace zn
 		typedef std::map<small_int, vertex_t> vertex_map_t;
 		typedef typename vertex_map_t::iterator vertex_descriptor_t;
 
-		relations_graph_t(const large_int &n) : n_(n)
+		relations_graph_t(const large_int &n) : n_(n), hist_("hits"), promo_("promo")
 		{
 			// insert the '1' vertex
 			vertex_t v(1, 0);
@@ -223,6 +225,7 @@ namespace zn
 					{	 // the problem is which are the edges involved
 						if (it0->second.color == 1)
 						{
+							promo_.insert(smooth);
 							path_to1(smooth, it0, base, true);
 							path_to1(smooth, it1, base, false);
 							if (smooth.type() != 0)
@@ -310,6 +313,7 @@ namespace zn
 		int						color_ = 2; // used to mark connected components
 		large_int				n_;
 		bit_hist_t				hist_;
+		bit_hist_t				promo_;
 	};
 
 	struct sieving_options_t
@@ -490,6 +494,7 @@ namespace zn
 			small_int		factor(int index) const { return large_f[index]; }
 			small_int		reminder(void) const { return large_f[0]; }
 
+			int	 tail(int dist) const {	return (dist > factors_.size() ? 0 : factors_[factors_.size() - dist]);}
 			bool square(void) const { return factors_.empty(); }
 			bool sign_neg(void) const { return sign_bit; }
 			const std::vector<int>	&factors(void) const { return factors_; }
@@ -684,8 +689,8 @@ namespace zn
 				have_double = have_dbl;
 				thrs20 = largest_prime * largest_prime;
 				const int div = 16;
-				thrs2 = thrs20 / div;
-				thrs3 = std::min<small_int>(thrs20 * largest_prime, 1LL << 61);
+				thrs2 = thrs20 / 2;
+				thrs3 = std::min<small_int>(thrs2 * largest_prime, 1LL << 62);
 			}
 			void compute(polynomial_siqs_t<large_int, small_int> &poly, small_int m)
 			{
@@ -695,6 +700,9 @@ namespace zn
 		};
 		typedef std::vector<smooth_t> smooth_vector_t;
 		self_initializing_quadratic_sieve_t(const large_int &n, const sieving_options_t &opt) : n_(n), options_(opt)
+#ifdef HAVE_SMHIST
+			, smhist_("smhist")
+#endif
 		{
 			// double the range; half of them won't be a quadratic residue
 #ifdef HAVE_TIMING
@@ -748,7 +756,7 @@ namespace zn
 			if (options_.order > 0)
 				generator.order_init(options_.order);
 			generator(); //initialize generators
-			LOG_INFO << "Factors of 'a' = " << generator.order() << log_base_t::newline_t();
+			LOG_INFO << "Factors of 'a' = " << generator.order()  << " (" << generator.avg_fact() << ")" << log_base_t::newline_t();
 #ifdef HAVE_TIMING
 			time_estimator_t time_estimator(base_.size());
 			log_time("Startup");
@@ -815,18 +823,25 @@ namespace zn
 					process_candidates_chunk(base_, candidates, chunk, smooths, n_);
 				}
 			}
+			// compute theoretical probability of finding a smooth
+			double n1 = safe_cast<double>(n_);
+			double u = ((std::log(2) + std::log(n1)) / 2 + std::log(options_.m)) / std::log(base_.rbegin()->prime(0));
+			double pu = pow(u, -u);
+			// actual frequency
+			double pu1 = analysis_.direct / (static_cast<double>(analysis_.polynomials) * (options_.m << generator.order()));
 			LOG_INFO << log_base_t::newline_t()
-			         << "Polynomial " << analysis_.polynomials / static_cast<double>(base_.size())<< "\n"
+			         << "Polynomial " << analysis_.polynomials / static_cast<double>(base_.size())
+				                      << " (" << analysis_.polynomials << ")\n"
 			         << "Attempted  " << analysis_.smooth_attempts << "\n"
-				     << "Direct     " << analysis_.direct << "\n"
+				     << "Direct     " << analysis_.direct << " (" << pu << ", actual = " << pu1 << ")" << "\n"
 					 << "Promoted   " << analysis_.promoted << "\n"
 					 << "Large p.   " << analysis_.smooth_prime_unused << "\n"
+					 << "Huge p.    " << analysis_.smooth_huge_prime << "\n"
 					 << "Idle       " << analysis_.smooth_idle << "\n" ;
 			if (options_.have_double)
 				LOG_INFO
 				     << "C.Partial  " << analysis_.smooth_large_composite << "\n"
 					 << "P.Partial  " << analysis_.partial_promoted << "\n"
-					 << "Huge p.    " << analysis_.smooth_huge_prime << "\n"
 					 << "Huge c.    " << analysis_.smooth_huge_composite << "\n"
 					 << "Unfactored " << analysis_.smooth_unfactored << "\n"
  				     << "\n";
@@ -906,9 +921,11 @@ namespace zn
 					sieve_t::build_run(info.poly, base_, info.runs);
 					end = info.runs.end();
 					begin = info.runs.begin();
-					for (; begin != end; ++begin)
+#if 1
+					for (; begin != end; ++begin) // small prime optimization
 						if (begin->p > 12)
 							break;
+#endif
 				}
 				else
 					sieve_t::update_run(info.poly, info.runs);
@@ -999,12 +1016,13 @@ namespace zn
 		{
 			real lg = base_.rbegin()->logp_;
 			real un = real_op_t<real>::unit();
-			real sieve_thrs = 2 * base_.rbegin()->logp_ + sieve.offset + 4 * real_op_t<real>::unit(); // small prime variation
+			real sieve_thrs = 2 * lg + sieve.offset + 4 * real_op_t<real>::unit(); // small prime variation
 			if (info.have_double)
-				sieve_thrs += base_.rbegin()->logp_ - 2 * real_op_t<real>::unit();
+				sieve_thrs += lg - 4 * real_op_t<real>::unit();
 			if (options_.sieve_bias)
 				sieve_thrs = static_cast<real>(sieve_thrs + options_.sieve_bias);
 			size_t size = sieve.values.size();
+#if 0
 			size_t size0 = sieve.values.size() / 16;
 			__m128i avx_thrs = _mm_set1_epi8(sieve_thrs);
 			__m128i mzero = _mm_set1_epi8(0);
@@ -1018,6 +1036,11 @@ namespace zn
 					size_t i1 = i0 * 16;
 					size_t i2 = i1 + 16;
 					for (size_t i = i1; i < i2; i++)
+#else
+			for (size_t i = 0; i < size; i++)
+			{
+				{
+#endif
 						if (sieve.values[i] < sieve_thrs)
 						{   // static cast required, otherwise operation is done on unsigend
 							smooth_t s(info, qscached_, static_cast<int>(i) - options_.m);
@@ -1091,6 +1114,9 @@ namespace zn
 				{
 				case smooth_valid_e:
 					register_smooth(smooths, smooth);
+#ifdef HAVE_SMHIST
+					smhist_.insert(base[smooth.tail(3)].prime(0)) ;
+#endif
 					analysis_.direct++;
 					break;
 				case smooth_candidate_e:
@@ -1130,6 +1156,9 @@ namespace zn
 #ifdef HAVE_POLY_STAT
 		std::vector<size_t> poly_stat_;
 		int					poly_count_ = 0;
+#endif
+#ifdef HAVE_SMHIST
+		typename relations_graph_t<smooth_t>::bit_hist_t smhist_;
 #endif
 
 		shared_list_t<polynomial_seed_t> polynomials_;

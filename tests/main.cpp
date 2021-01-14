@@ -54,7 +54,7 @@ void test_self_initializing_quadratic_sieve(const large_int &n, const sieving_op
 {
 	auto p1 = self_initializing_quadratic_sieve<large_int, small_int, real>(n, opt);
 	auto p2 = n / p1;
-	std::cout << p1 << " * " << p2 << " = " << n << std::endl;
+	std::cout << "\n" << p1 << " * " << p2 << " = " << n << std::endl;
 }
 
 template <class large_int>
@@ -296,7 +296,7 @@ int main(int argc, char *argv[])
 			else if (strncmp(argv[i], "--multiplier=", 13) == 0)
 				options.multiplier = atoi(argv[i] + 13);
 			else if (strncmp(argv[i], "--min-factor=", 13) == 0)
-				m = options.min_factor = atoi(m1 = argv[i] + 13);
+				options.min_factor = atoi(argv[i] + 13);
 			else if (strncmp(argv[i], "--m=", 4) == 0)
 				m = options.m = atoi(m1 = argv[i] + 4);
 			else if (strcmp(argv[i], "--double") == 0)

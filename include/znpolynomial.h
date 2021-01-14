@@ -118,7 +118,6 @@ namespace zn
 	struct polynomial_siqs_t
 	{
 		typedef small_int small_int_t;
-		std::vector<int> index; // base used for the polynomial
 		large_int a0;
 		large_int a;  // a = a0 * a0
 		std::vector<large_int> b1;
@@ -190,7 +189,6 @@ namespace zn
 			b = b1[index];
 			c = c1[index];
 		}
-
 		large_int eval(const large_int &x) const
 		{
 			large_int x1 = a * x + 2 * b;
@@ -214,6 +212,7 @@ namespace zn
 		void compute_zeros(const large_int &n)
 		{
 			large_int d = safe_cast<large_int>(sqrt(n));
+
 			//x1 = safe_cast<small_int>((-b - d) / a);
 			//x2 = safe_cast<small_int>((-b + d) / a);
 			x1 = safe_cast<small_int>(- d / a);
@@ -258,6 +257,11 @@ namespace zn
 			order_init(min_order);
 		}
 		size_t order(void) const { return index_.index.size(); }
+		size_t avg_fact(void) const 
+		{
+			auto target = target_ / index_.index.size(); 
+			return static_cast<int>(std::exp(target));
+		}
 		polynomial_seed_t operator()(void)
 		{
 			increment();
@@ -283,7 +287,7 @@ namespace zn
 		bool within_target(const polynomial_seed_t &seed, bool update_err)
 		{
 			float err = abs(seed.target_log - target_);
-			if (update_err)
+			if (update_err && (err < 0.1))
 			{
 				average_count_++;
 				const float alpha = 0.1f + 1.0f / (average_count_ + 0.2f);

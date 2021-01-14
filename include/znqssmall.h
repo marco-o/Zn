@@ -239,9 +239,9 @@ namespace zn
 	{
 		int		m2 = 1000;
 		size_t	base_size = 32;
-		double	sieve_offset = 0;
+		double	sieve_offset = 0.6;
 		double	pquality = 5.0; // to select primes for 'a' coefficient
-		int		smooth_excess = 4; // number of smooths to find
+		int		smooth_excess = 2; // number of smooths to find
 		bool	more_polys = false;
 		interpolator_t base_int = { 24.0f, 0.4f };// actual baseof n is a + b * msb(n), another good is {18, 0.18}
 		interpolator_t m2_int = { 800.0f, 40.0f };
@@ -505,7 +505,9 @@ namespace zn
 				info.n = n;
 				info.multi = 1;
 			}
+#ifdef HAVE_MONTGOMERY
 			info.mul.init(info.n);
+#endif
 			int bits = msb(info.n);
 			info.config.base_size = interpolate(info.config.base_int, bits);
 			info.config.m2 = interpolate(info.config.m2_int, bits);
@@ -577,7 +579,7 @@ namespace zn
 					small_int t = p->residue[info.n % p->value];
 					small_int r = 2 * p->value - ((info.sqrn - poly.m) % p->value);
 					small_int i0 = (r + t) % p->value;
-					if (p->value > 3)
+					if (p->value > 2)
 						/*	{
 								for (int i = i0; i < poly.m2 ; i += 2)
 									info.values[i] += p->logp;
@@ -697,7 +699,7 @@ namespace zn
 					{
 						stats_.direct();
 #ifdef _DEBUG
-						smooth_invariant(info, smooth);
+						smooth_invariant(info, smooth, false);
 #endif
 						info.smooths.push_back(smooth);
 					}
@@ -737,7 +739,11 @@ namespace zn
 				int ip = info.smooth_perm[i];
 				smooth_t s = info.smooths[ip]; // should pick up its list of factors
 #ifdef _DEBUG
-				smooth_invariant(info, s);
+				smooth_invariant(info, s, false);
+#endif
+#ifdef HAVE_MONTGOMERY
+				s.axb = info.mul.project(s.axb);
+				s.sqr = info.mul.project(s.sqr);
 #endif
 				for (int j = 0; j < size; j++)
 					if (bit_test(info.factors[j].mask, ip))
@@ -745,8 +751,10 @@ namespace zn
 						int sindex = info.smooth_index[j];
 						const smooth_t& s1 = info.smooths[sindex];
 #ifdef HAVE_MONTGOMERY
-						s.axb = info.mul.mul(s.axb, s1.axb);
-						s.sqr = info.mul.mul(s.sqr, s1.sqr);
+						s.axb = info.mul.prod(s.axb, info.mul.project(s1.axb));
+						s.sqr = info.mul.prod(s.sqr, info.mul.project(s1.sqr));
+						//s.axb = info.mul.mul(s.axb, s1.axb);
+						//s.sqr = info.mul.mul(s.sqr, s1.sqr);
 #else
 						s.axb = mul_mod(s.axb, s1.axb, info.n);
 						s.sqr = mul_mod(s.sqr, s1.sqr, info.n);
@@ -758,15 +766,20 @@ namespace zn
 						for (int k = 0; k <= common_bits; k++)
 							if (bit_test(common, k))
 #ifdef HAVE_MONTGOMERY
-								s.sqr = info.mul.mul(s.sqr, info.factors[k].value);
+								s.sqr = info.mul.prod(s.sqr, info.mul.project(info.factors[k].value));
+								//s.sqr = info.mul.mul(s.sqr, info.factors[k].value);
 #else
 								s.sqr = mul_mod<large_int>(s.sqr, info.factors[k].value, info.n);
 #endif
 
-#ifdef _DEBUG
-						smooth_invariant(info, s);
+#if defined(_DEBUG)
+						smooth_invariant(info, s, true);
 #endif
 					}
+#ifdef HAVE_MONTGOMERY
+				s.axb = info.mul.reduce(s.axb);
+				s.sqr = info.mul.reduce(s.sqr);
+#endif
 				stats_.attempts();
 				large_int n = info.n / info.multi;
 				large_int q = euclidean_algorithm(n, s.sqr + s.axb);
@@ -815,10 +828,19 @@ namespace zn
 					std::cout << (((f & (1LL << j))) ? '1' : '0') << (j < sall - 1 ? " " : "\n");
 			}
 		}
-		void smooth_invariant(const info_t& info, const smooth_t& smooth) const
+		void smooth_invariant(const info_t& info, const smooth_t& smooth, bool red) const
 		{
-			large_int q1 = mul_mod(smooth.axb, smooth.axb, info.n);
-			large_int q2 = mul_mod(smooth.sqr, smooth.sqr, info.n);
+			large_int axb = smooth.axb;
+			large_int sqr = smooth.sqr;
+			if (red)
+			{
+#if defined(HAVE_MONTGOMERY)
+				axb = info.mul.reduce(axb);
+				sqr = info.mul.reduce(sqr);
+#endif
+			}
+			large_int q1 = mul_mod(axb, axb, info.n);
+			large_int q2 = mul_mod(sqr, sqr, info.n);
 			auto mask = smooth.factors;
 			int fmsb = msb(mask);
 			for (int index = 0; index <= fmsb; index++)

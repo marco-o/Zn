@@ -109,15 +109,19 @@ namespace zn
 		typedef typename std::make_unsigned<T>::type unsigned_type;
 		montgomery_t(signed_type n = 65537)
 		{
+			init(n);
+		}
+		void init(signed_type n)
+		{
 			n_ = n;
 			n1_ = montgomery_inverse(n);
 			r2_ = compute_r2(n_);
 		}
-		unsigned_type project(unsigned_type a)
+		unsigned_type project(signed_type a) const
 		{
-			return prod(r2_, a);
+			return (a > 0 ? prod(r2_, a) : prod(r2_, a + n_));
 		}
-		unsigned_type mul(signed_type a, signed_type b)
+		unsigned_type mul(signed_type a, signed_type b) const 
 		{
 			if (a < 0)
 				if (b < 0)
@@ -130,15 +134,15 @@ namespace zn
 				else
 					return unred(prod(a, b));
 		}
-		unsigned_type mul(unsigned_type a, unsigned_type b)
+		unsigned_type mul(unsigned_type a, unsigned_type b) const
 		{
 			return unred(prod(a, b));
 		}
-		unsigned_type mul_alt(unsigned_type a, unsigned_type b)
+		unsigned_type mul_alt(unsigned_type a, unsigned_type b) const
 		{
-			return prod(prod(project(a), project(b)), 1);
+			return reduce(prod(project(a), project(b)));
 		}
-		unsigned_type power(unsigned_type base, unsigned_type exp)
+		unsigned_type power(unsigned_type base, unsigned_type exp) const
 		{
 			unsigned_type result1 = project(1);
 			unsigned_type base1 = project(base);
@@ -150,18 +154,23 @@ namespace zn
 			}
 			return prod(result1, 1);
 		}
-	private:
-		unsigned_type unred(unsigned_type t) // computes tR^-1 mod n
+		unsigned_type reduce(const unsigned_type t) const
 		{
-			return prod(t, r2_);
+			unsigned_type t1[2] = { t, 0 };
+			return reduce(t1);
 		}
-		unsigned_type prod(const unsigned_type a1, const unsigned_type b1)
+		unsigned_type prod(const unsigned_type a1, const unsigned_type b1) const
 		{
 			unsigned_type t[2];
 			multiplication_unsigned(a1, b1, t);
 			return reduce(t);
 		}
-		unsigned_type reduce(const unsigned_type* t)
+	private:
+		unsigned_type unred(unsigned_type t) const // computes tR^-1 mod n
+		{
+			return prod(t, r2_);
+		}
+		unsigned_type reduce(const unsigned_type* t) const
 		{
 			unsigned_type mn[2];
 			unsigned_type m = t[0] * n1_;
@@ -173,7 +182,7 @@ namespace zn
 				mn[1] -= n_;
 			return mn[1];
 		}
-		signed_type montgomery_inverse(const signed_type& n)
+		signed_type montgomery_inverse(const signed_type& n) const
 		{
 			signed_type q;
 			int i, j;
@@ -198,7 +207,7 @@ namespace zn
 				s[i] /= 2;
 			return -r[i] * t[i];
 		}
-		unsigned_type compute_r2(const unsigned_type& n)
+		unsigned_type compute_r2(const unsigned_type& n) const
 		{
 			unsigned_type c = static_cast<unsigned_type>(-1) % n;
 			for (int i = 0; i < sizeof(unsigned_type) * 8; i++)
