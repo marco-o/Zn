@@ -30,5 +30,9 @@ function test_quadratic_residue(limit)
 end
 
 
-err = test_quadratic_residue(100)
-@printf("tested quadratic residue, found %d errors\n", err)
+#err = test_quadratic_residue(100)
+#@printf("tested quadratic residue, found %d errors\n", err)
+
+#inverse_prime_count(1000)
+
+quadratic_sieve(2309 * 3109, 50)

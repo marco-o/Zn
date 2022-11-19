@@ -108,3 +108,32 @@ function find_prime_base(N, limit)
 	end
 	return result
 end
+
+function prime_count(limit)
+	return limit / log(limit) 
+end
+
+#
+# Find out a number N such that N/logN = count
+#
+function inverse_prime_count(count)
+	n = count * log(count)
+	for i=1:10
+		c0 = n / log(n)
+		logn = log(n)
+		dn = (count - c0) * logn ^ 2 / (logn - 1)
+		n = n + dn
+		if dn < 1
+			break
+		end
+	end
+	return trunc(Int, n)
+end
+
+function quadratic_sieve(N, base_size)
+	sieve_limit = inverse_prime_count(base_size * 2)
+	primes = find_prime_base(N, sieve_limit)
+	a = 0
+	return a
+end
+
