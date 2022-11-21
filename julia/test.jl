@@ -35,4 +35,4 @@ end
 
 #inverse_prime_count(1000)
 
-quadratic_sieve(2309 * 3109, 50)
+quadratic_sieve(2309 * 3109, 50, 50000)
