@@ -1,6 +1,8 @@
 #
 #
 #
+using Printf
+using OffsetArrays
 
 function power_module(base, exp, mod)
     exponent = exp
@@ -142,7 +144,8 @@ end
 #
 struct PrimeInfoEx
 	base::PrimeInfo
-	idx::Int64    # this is the first value that is a quadratic residue within sieving range
+	idx1::Int64    # this is the smallest value that is a quadratic residue within sieving range
+	idx2::Int64    # this is the largest value that is a quadratic residue 
 	delta::Int64	 # The one corresponding to the other root															
 	logp::UInt8		# log(p), used for sievin
 end
@@ -161,14 +164,17 @@ end
 
 function build_sieve_info(primes::Vector{PrimeInfo}, N, size)
 	result = Vector{PrimeInfoEx}()
-	start = convert(typeof(N), round(sqrt(N))) - size ÷ 2
+	start = convert(typeof(N), round(sqrt(N))) - (size ÷ 2) 
 	for p ∈ primes
-		idx1 = convert(Int64, (start + p.residue) % p.prime)
-		idx2 = (convert(Int64, start + p.prime - p.residue) % p.prime)
+		st = p.prime * 2 - convert(Int64, start % p.prime)
+		idx1 = (st + p.residue) % p.prime
+		idx2 = (st - p.residue) % p.prime
+		#i1 = (start + idx1) % p.prime
+		#i2 = (start + idx2) % p.prime
 		idx_min = min(idx1, idx2) 
 		idx_max = max(idx1, idx2)
 		logp = mylog(p.prime)
-		info_ex = PrimeInfoEx(p, idx_min, idx_max - idx_min, logp)
+		info_ex = PrimeInfoEx(p, idx_min, idx_max, idx_max - idx_min, logp)
 		push!(result, info_ex)
 	end	
 	last_prime = last(primes).prime 
@@ -186,12 +192,20 @@ struct FactorInfo
 	factors
 end
 
-function attempt_factorization(sieve_info::SieveInfo, x, y, i)
+function attempt_factorization(sieve_info::SieveInfo, N, i)
+	x = sieve_info.start + i
+	y = x * x - N
 	y1 = y 
 	factors = Vector{typeof((0, 0))}()
+	@printf("Factorization of %d [%d]\n", y1, i)
+	if y1 < 0
+		push!(factors, (0, -1))
+		y1 = -y1
+	end
 	for index ∈ eachindex(sieve_info.primes)
 		p = sieve_info.primes[index]
-		if ((i - p.idx) % p.base.prime == 0) || ((i - p.idx - p.delta) % p.base.prime == 0)
+		i1 = i % p.base.prime 
+		if ((i1 == p.idx1) || (i1 == p.idx2))
 			exponent = 0 
 			while y1 % p.base.prime == 0
 				exponent += 1
@@ -199,25 +213,31 @@ function attempt_factorization(sieve_info::SieveInfo, x, y, i)
 			end
 			if exponent % 2 == 1
 				push!(factors, (index, p.base.prime))
+			else
+				if exponent == 0
+					x1 = convert(Int64, x % p.base.prime)
+					@printf("Error in division by %d [res = %d, x1 = %d]\n", p.base.prime, p.base.residue, x1)
+				end
+			end
+		else
+			if y1 % p.base.prime == 0
+				@printf("Undetected division by %d\n", p.base.prime)
 			end
 		end
 	end
 	if (y1 < sieve_info.large_prime)
-		if y1 != 1
-			push!(factors, (0, convert(Int64, y1)))
-			return FactorInfo(x, y, factors)
-		end
+		return (FactorInfo(x, y, factors), convert(Int64, y1))
 	end
-	return nothing
+	return (nothing, 0)
 end
 
 function sieve(sieve_info::SieveInfo, N)
 	#
 	# Phase 1: do actual sieving
 	#
-	base=[zero(UInt8) for n=1:sieve_info.size]
+	base=OffsetVector([zero(UInt8) for n=1:sieve_info.size], 0:sieve_info.size-1)
 	for p ∈ sieve_info.primes
-		i = p.idx + 1
+		i = p.idx1 
 		limit = sieve_info.size - p.delta 
 		while i < limit
 			base[i]         += p.logp
@@ -232,14 +252,21 @@ function sieve(sieve_info::SieveInfo, N)
 	# Phase 2: look for candidates for full factorization
 	#
 	result = Vector{FactorInfo}()
-	for i = 1:sieve_info.size
+	reminders = Dict{Int64, FactorInfo}()
+	for i = 0:sieve_info.size-1
 		if base[i] > sieve_info.threshold
-			j = i - 1
-			x = sieve_info.start + j
-			y = x * x - N
-			fact = attempt_factorization(sieve_info, x, y, j)
-			if !isnothing(fact)
-				push!(result, factor)
+			(factorization, large_prime) = attempt_factorization(sieve_info, N, i)
+			if large_prime != 0
+				if large_prime == 1
+					push!(result, factorization)
+				else
+					prev_factor = get(reminders, large_prime, nothing)
+					if (isnothing(prev_factor))
+						get!(reminders, large_prime, factorization)
+					else
+						push(result, merge_factors(factorization, prev_factor))
+					end
+				end
 			end
 		end
 	end
